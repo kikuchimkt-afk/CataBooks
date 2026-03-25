@@ -77,6 +77,8 @@ const cartTotalRetail = document.getElementById('cartTotalRetail');
 const exportStudentListBtn = document.getElementById('exportStudentListBtn');
 const exportOrderSheetBtn = document.getElementById('exportOrderSheetBtn');
 const createQuoteBtn = document.getElementById('createQuoteBtn');
+const createInvoiceBtn = document.getElementById('createInvoiceBtn');
+const batchInvoiceBtn = document.getElementById('batchInvoiceBtn');
 const newStudentGrade = document.getElementById('newStudentGrade');
 const importStudentBtn = document.getElementById('importStudentBtn');
 const importStudentInput = document.getElementById('importStudentInput');
@@ -376,9 +378,30 @@ function setupEventListeners() {
     if (saveMaterialBtn) saveMaterialBtn.addEventListener('click', saveMaterialHandler);
 
     // Export buttons
-    if (createQuoteBtn) createQuoteBtn.addEventListener('click', handleCreateQuote);
+    if (createQuoteBtn) createQuoteBtn.addEventListener('click', () => handleCreateQuote('quote'));
+    if (createInvoiceBtn) createInvoiceBtn.addEventListener('click', () => handleCreateQuote('invoice'));
+    if (batchInvoiceBtn) batchInvoiceBtn.addEventListener('click', handleBatchInvoice);
     if (exportStudentListBtn) exportStudentListBtn.addEventListener('click', handleExportStudentList);
     if (exportOrderSheetBtn) exportOrderSheetBtn.addEventListener('click', handleExportOrderSheet);
+
+    // Clear all carts
+    const clearAllCartsBtn = document.getElementById('clearAllCartsBtn');
+    if (clearAllCartsBtn) clearAllCartsBtn.addEventListener('click', handleClearAllCarts);
+
+    // Batch Invoice Modal
+    const batchModal = document.getElementById('batchInvoiceModal');
+    if (batchModal) {
+        batchModal.querySelector('.close-modal').addEventListener('click', () => batchModal.classList.remove('active'));
+        batchModal.querySelector('.close-modal-btn').addEventListener('click', () => batchModal.classList.remove('active'));
+        batchModal.addEventListener('click', (e) => { if (e.target === batchModal) batchModal.classList.remove('active'); });
+        document.getElementById('batchSelectAll').addEventListener('click', () => {
+            batchModal.querySelectorAll('input[name="batchStudent"]').forEach(cb => cb.checked = true);
+        });
+        document.getElementById('batchDeselectAll').addEventListener('click', () => {
+            batchModal.querySelectorAll('input[name="batchStudent"]').forEach(cb => cb.checked = false);
+        });
+        document.getElementById('batchGenerateBtn').addEventListener('click', executeBatchInvoice);
+    }
 
     // Cart copy & order save
     const copyCartBtn = document.getElementById('copyCartBtn');
@@ -867,8 +890,12 @@ function updateCartDisplay() {
         cartEmptyState.style.display = 'flex';
         cartEmptyState.querySelector('p').innerHTML = '生徒を選択して<br>教材を追加してください';
         createQuoteBtn.disabled = true;
+        if (createInvoiceBtn) createInvoiceBtn.disabled = true;
         const _copyBtn1 = document.getElementById('copyCartBtn'); if (_copyBtn1) _copyBtn1.disabled = true;
         const _saveBtn1 = document.getElementById('saveOrderBtn'); if (_saveBtn1) _saveBtn1.disabled = true;
+        // Batch & clear-all stay enabled if students exist
+        const hasStudents = currentState.students.length > 0;
+        if (batchInvoiceBtn) batchInvoiceBtn.disabled = !hasStudents;
         updateTotals(0, 0);
         return;
     }
@@ -877,6 +904,7 @@ function updateCartDisplay() {
         cartEmptyState.style.display = 'flex';
         cartEmptyState.querySelector('p').innerHTML = 'カートは空です';
         createQuoteBtn.disabled = true;
+        if (createInvoiceBtn) createInvoiceBtn.disabled = true;
         const _copyBtn2 = document.getElementById('copyCartBtn'); if (_copyBtn2) _copyBtn2.disabled = true;
         const _saveBtn2 = document.getElementById('saveOrderBtn'); if (_saveBtn2) _saveBtn2.disabled = true;
         updateTotals(0, 0);
@@ -892,6 +920,8 @@ function updateCartDisplay() {
     if (exportStudentListBtn) exportStudentListBtn.disabled = false;
     if (exportOrderSheetBtn) exportOrderSheetBtn.disabled = false;
     createQuoteBtn.disabled = false;
+    if (createInvoiceBtn) createInvoiceBtn.disabled = false;
+    if (batchInvoiceBtn) batchInvoiceBtn.disabled = false;
     const _copyBtn3 = document.getElementById('copyCartBtn'); if (_copyBtn3) _copyBtn3.disabled = false;
     const _saveBtn3 = document.getElementById('saveOrderBtn'); if (_saveBtn3) _saveBtn3.disabled = false;
 
@@ -1602,89 +1632,91 @@ async function saveOrderHistory() {
 
 // === INVOICE / QUOTE PDF GENERATION ===
 
-async function handleCreateQuote() {
-    if (!currentState.currentStudentId || currentState.currentCart.length === 0) {
-        alert('生徒を選択し、カートに教材を追加してください');
-        return;
+function populateInvoiceTemplate(template, studentName, cartItems, docType) {
+    const q = (sel) => template.querySelector(sel);
+    const settings = currentState.settings;
+
+    // Title: 御見積書 or 御請求書
+    const titleEl = q('.invoice-title');
+    if (titleEl) titleEl.textContent = docType === 'quote' ? '御見積書' : '御請求書';
+
+    // Logo
+    const savedLogo = localStorage.getItem('invoiceLogo');
+    const logoContainer = q('#pdf-logo-container');
+    const logoImg = q('#pdf-logo-img');
+    if (savedLogo && logoContainer && logoImg) {
+        logoImg.src = savedLogo;
+        logoContainer.style.display = 'block';
+    } else if (logoContainer) {
+        logoContainer.style.display = 'none';
     }
 
-    const student = currentState.students.find(s => s.id === currentState.currentStudentId);
-    if (!student) return;
+    // Sender info
+    q('#pdf-sender-name').textContent = settings.schoolName || '';
+    const addrVal = settings.address || '';
+    q('#pdf-sender-address').innerHTML = addrVal.replace(/\n/g, '<br>');
+    q('#pdf-sender-phone').textContent = settings.phone ? 'TEL: ' + settings.phone : '';
+    q('#pdf-sender-reg').textContent = settings.regNum ? '登録番号: ' + settings.regNum : '';
 
-    const settings = currentState.settings;
-    const cartItems = currentState.currentCart;
+    // Date
+    const now = new Date();
+    q('#pdf-date').textContent = now.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' });
 
-    try {
-        // --- Populate the hidden invoice template ---
-        const template = document.getElementById('invoice-template');
-        const q = (sel) => template.querySelector(sel);
+    // Recipient (様 / 御中 auto-detection)
+    let title = '様';
+    if (studentName.includes('株式会社') || studentName.includes('有限会社') || studentName.includes('合同会社')) {
+        title = '御中';
+    }
+    q('#pdf-recipient-name').textContent = `${studentName} ${title}`;
 
-        // Logo
-        const savedLogo = localStorage.getItem('invoiceLogo');
-        const logoContainer = q('#pdf-logo-container');
-        const logoImg = q('#pdf-logo-img');
-        if (savedLogo && logoContainer && logoImg) {
-            logoImg.src = savedLogo;
-            logoContainer.style.display = 'block';
-        } else if (logoContainer) {
-            logoContainer.style.display = 'none';
-        }
+    // Verification text
+    const verText = q('.verification-text');
+    if (verText) {
+        verText.textContent = docType === 'quote'
+            ? '下記の通りお見積り申し上げます。'
+            : '下記の通りご請求申し上げます。';
+    }
 
-        // Sender info
-        q('#pdf-sender-name').textContent = settings.schoolName || '';
-        const addrVal = settings.address || '';
-        q('#pdf-sender-address').innerHTML = addrVal.replace(/\n/g, '<br>');
-        q('#pdf-sender-phone').textContent = settings.phone ? 'TEL: ' + settings.phone : '';
-        q('#pdf-sender-reg').textContent = settings.regNum ? '登録番号: ' + settings.regNum : '';
+    // Table items
+    const tbody = q('#pdf-table-body');
+    tbody.innerHTML = '';
+    let subtotal = 0;
 
-        // Date
-        const now = new Date();
-        q('#pdf-date').textContent = now.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' });
+    cartItems.forEach(item => {
+        const price = parseInt(item.price_retail) || 0;
+        subtotal += price;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${item.title}</td>
+            <td>¥${price.toLocaleString()}</td>
+            <td>1</td>
+            <td>¥${price.toLocaleString()}</td>
+        `;
+        tbody.appendChild(tr);
+    });
 
-        // Recipient (様 / 御中 auto-detection)
-        let title = '様';
-        const recipientName = student.name;
-        if (recipientName.includes('株式会社') || recipientName.includes('有限会社') || recipientName.includes('合同会社')) {
-            title = '御中';
-        }
-        q('#pdf-recipient-name').textContent = `${recipientName} ${title}`;
+    // Handling fee (invoice only)
+    if (docType === 'invoice' && settings.useHandlingFee && settings.handlingFeeAmount > 0) {
+        subtotal += settings.handlingFeeAmount;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>事務手数料</td>
+            <td>¥${settings.handlingFeeAmount.toLocaleString()}</td>
+            <td>1</td>
+            <td>¥${settings.handlingFeeAmount.toLocaleString()}</td>
+        `;
+        tbody.appendChild(tr);
+    }
 
-        // Table items
-        const tbody = q('#pdf-table-body');
-        tbody.innerHTML = '';
-        let subtotal = 0;
+    q('#pdf-subtotal').textContent = '¥' + subtotal.toLocaleString();
+    q('#pdf-total-amount').textContent = subtotal.toLocaleString();
 
-        cartItems.forEach(item => {
-            const price = parseInt(item.price_retail) || 0;
-            subtotal += price;
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>${item.title}</td>
-                <td>¥${price.toLocaleString()}</td>
-                <td>1</td>
-                <td>¥${price.toLocaleString()}</td>
-            `;
-            tbody.appendChild(tr);
-        });
-
-        // Handling fee
-        if (settings.useHandlingFee && settings.handlingFeeAmount > 0) {
-            subtotal += settings.handlingFeeAmount;
-            const tr = document.createElement('tr');
-            tr.innerHTML = `
-                <td>事務手数料</td>
-                <td>¥${settings.handlingFeeAmount.toLocaleString()}</td>
-                <td>1</td>
-                <td>¥${settings.handlingFeeAmount.toLocaleString()}</td>
-            `;
-            tbody.appendChild(tr);
-        }
-
-        q('#pdf-subtotal').textContent = '¥' + subtotal.toLocaleString();
-        q('#pdf-total-amount').textContent = subtotal.toLocaleString();
-
-        // Payment / Bank info footer
-        const bankInfoContainer = q('#pdf-bank-info');
+    // Payment / Bank info footer
+    const bankInfoContainer = q('#pdf-bank-info');
+    if (docType === 'quote') {
+        // Quotes don't show payment details
+        bankInfoContainer.innerHTML = '';
+    } else {
         const method = settings.paymentMethod || 'bank';
         let deadlineStr = '';
         if (settings.paymentDeadline) {
@@ -1706,32 +1738,54 @@ async function handleCreateQuote() {
             }
             bankInfoContainer.innerHTML = content;
         }
+    }
 
-        // --- Generate PDF with html2canvas + jsPDF ---
-        // Move template visible briefly for rendering
-        const container = document.getElementById('invoice-template-container');
-        container.style.position = 'fixed';
-        container.style.left = '0';
-        container.style.top = '0';
-        container.style.zIndex = '-9999';
-        container.style.opacity = '0';
-        container.style.pointerEvents = 'none';
-        container.style.width = '210mm';
+    return subtotal;
+}
 
-        await document.fonts.ready;
-        await new Promise(r => setTimeout(r, 300));
+async function renderInvoicePdfPage(template) {
+    const container = document.getElementById('invoice-template-container');
+    container.style.position = 'fixed';
+    container.style.left = '0';
+    container.style.top = '0';
+    container.style.zIndex = '-9999';
+    container.style.opacity = '0';
+    container.style.pointerEvents = 'none';
+    container.style.width = '210mm';
 
-        const canvas = await html2canvas(template, {
-            scale: 1.5,
-            useCORS: true,
-            logging: false,
-            windowWidth: 794,
-            backgroundColor: '#FFFFFF'
-        });
+    await document.fonts.ready;
+    await new Promise(r => setTimeout(r, 300));
 
-        // Reset container position
-        container.style.position = 'absolute';
-        container.style.left = '-9999px';
+    const canvas = await html2canvas(template, {
+        scale: 1.5,
+        useCORS: true,
+        logging: false,
+        windowWidth: 794,
+        backgroundColor: '#FFFFFF'
+    });
+
+    container.style.position = 'absolute';
+    container.style.left = '-9999px';
+
+    return canvas;
+}
+
+async function handleCreateQuote(docType) {
+    if (!currentState.currentStudentId || currentState.currentCart.length === 0) {
+        alert('生徒を選択し、カートに教材を追加してください');
+        return;
+    }
+
+    const student = currentState.students.find(s => s.id === currentState.currentStudentId);
+    if (!student) return;
+
+    const typeName = docType === 'quote' ? '見積書' : '請求書';
+
+    try {
+        const template = document.getElementById('invoice-template');
+        const subtotal = populateInvoiceTemplate(template, student.name, currentState.currentCart, docType);
+
+        const canvas = await renderInvoicePdfPage(template);
 
         const { jsPDF } = window.jspdf;
         const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
@@ -1741,17 +1795,124 @@ async function handleCreateQuote() {
         const imgData = canvas.toDataURL('image/jpeg', 0.85);
         pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
 
-        // Generate filename
+        const now = new Date();
         const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
-        const fileName = `請求書_${student.name}_${dateStr}.pdf`;
-        pdf.save(fileName);
+        pdf.save(`${typeName}_${student.name}_${dateStr}.pdf`);
 
-        await addHistoryRecord('請求書作成',
-            `${student.name}様 | ¥${subtotal.toLocaleString()} | ${cartItems.length}点`
+        await addHistoryRecord(`${typeName}作成`,
+            `${student.name}様 | ¥${subtotal.toLocaleString()} | ${currentState.currentCart.length}点`
         );
 
     } catch (err) {
         console.error('PDF generation error:', err);
-        alert('請求書の生成に失敗しました: ' + err.message);
+        alert(`${typeName}の生成に失敗しました: ` + err.message);
     }
 }
+
+
+async function handleBatchInvoice() {
+    // Gather all students that have items in their cart
+    const studentsWithCarts = [];
+    for (const student of currentState.students) {
+        const cart = await getCart(student.id);
+        if (cart && cart.length > 0) {
+            studentsWithCarts.push({ student, cart });
+        }
+    }
+
+    if (studentsWithCarts.length === 0) {
+        alert('カートに教材が入っている生徒がいません');
+        return;
+    }
+
+    // Populate the modal with student checkboxes
+    const listContainer = document.getElementById('batchStudentList');
+    listContainer.innerHTML = '';
+
+    studentsWithCarts.forEach(({ student, cart }) => {
+        const total = cart.reduce((sum, i) => sum + (parseInt(i.price_retail) || 0), 0);
+        const div = document.createElement('div');
+        div.style.cssText = 'display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; border-bottom: 1px solid var(--border, #e2e8f0);';
+        div.innerHTML = `
+            <input type="checkbox" name="batchStudent" value="${student.id}" checked style="width: auto; flex-shrink: 0;">
+            <span style="flex: 1;">${student.name}${student.grade ? ' (' + student.grade + ')' : ''}</span>
+            <span style="color: var(--text-muted, #64748b); font-size: 0.85rem;">${cart.length}点 ¥${total.toLocaleString()}</span>
+        `;
+        listContainer.appendChild(div);
+    });
+
+    // Store the data for later use
+    document.getElementById('batchInvoiceModal')._studentsData = studentsWithCarts;
+    document.getElementById('batchInvoiceModal').classList.add('active');
+}
+
+async function executeBatchInvoice() {
+    const modal = document.getElementById('batchInvoiceModal');
+    const studentsData = modal._studentsData || [];
+    const selectedIds = new Set();
+    modal.querySelectorAll('input[name="batchStudent"]:checked').forEach(cb => selectedIds.add(cb.value));
+
+    if (selectedIds.size === 0) {
+        alert('生徒を1名以上選択してください');
+        return;
+    }
+
+    const selectedStudents = studentsData.filter(d => selectedIds.has(d.student.id));
+    const docTypeRadio = document.querySelector('input[name="batchDocType"]:checked');
+    const docType = docTypeRadio ? docTypeRadio.value : 'invoice';
+    const typeName = docType === 'quote' ? '見積書' : '請求書';
+
+    modal.classList.remove('active');
+
+    try {
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
+        pdf.deletePage(1);
+
+        const template = document.getElementById('invoice-template');
+
+        for (let i = 0; i < selectedStudents.length; i++) {
+            const { student, cart } = selectedStudents[i];
+            populateInvoiceTemplate(template, student.name, cart, docType);
+
+            const canvas = await renderInvoicePdfPage(template);
+
+            pdf.addPage();
+            const imgWidth = 210;
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            const imgData = canvas.toDataURL('image/jpeg', 0.85);
+            pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
+        }
+
+        const now = new Date();
+        const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+        pdf.save(`${typeName}一括_${dateStr}.pdf`);
+
+        await addHistoryRecord(`一括${typeName}作成`,
+            `${selectedStudents.length}名分の${typeName}を一括生成`
+        );
+
+        alert(`${selectedStudents.length}名分の${typeName}を1つのPDFにまとめました。`);
+
+    } catch (err) {
+        console.error('Batch PDF error:', err);
+        alert('一括PDF生成に失敗しました: ' + err.message);
+    }
+}
+
+
+function handleClearAllCarts() {
+    if (currentState.students.length === 0) {
+        alert('登録されている生徒がいません');
+        return;
+    }
+    showConfirm('全カート一括削除',
+        `全${currentState.students.length}名のカート内容を削除します。\n生徒データ自体は削除されません。\nこの操作は取り消せません。`,
+        async () => {
+            await clearAllCarts();
+            await reloadCart();
+            alert('全ての生徒のカートを空にしました');
+        }
+    );
+}
+
