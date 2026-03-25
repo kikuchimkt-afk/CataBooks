@@ -403,11 +403,26 @@ function setupEventListeners() {
         document.getElementById('batchGenerateBtn').addEventListener('click', executeBatchInvoice);
     }
 
-    // Cart copy & order save
+    // Cart copy & snapshot save/load
     const copyCartBtn = document.getElementById('copyCartBtn');
     if (copyCartBtn) copyCartBtn.addEventListener('click', copyCartToStudent);
-    const saveOrderBtn = document.getElementById('saveOrderBtn');
-    if (saveOrderBtn) saveOrderBtn.addEventListener('click', saveOrderHistory);
+    const saveSnapshotBtn = document.getElementById('saveSnapshotBtn');
+    if (saveSnapshotBtn) saveSnapshotBtn.addEventListener('click', saveSnapshot);
+    const loadSnapshotBtn = document.getElementById('loadSnapshotBtn');
+    if (loadSnapshotBtn) loadSnapshotBtn.addEventListener('click', () => document.getElementById('snapshotFileInput').click());
+    const snapshotFileInput = document.getElementById('snapshotFileInput');
+    if (snapshotFileInput) snapshotFileInput.addEventListener('change', loadSnapshot);
+
+    // Snapshot modal
+    const snapModal = document.getElementById('snapshotModal');
+    if (snapModal) {
+        snapModal.querySelector('.close-modal').addEventListener('click', () => snapModal.classList.remove('active'));
+        snapModal.querySelector('.close-modal-btn').addEventListener('click', () => snapModal.classList.remove('active'));
+        snapModal.addEventListener('click', (e) => { if (e.target === snapModal) snapModal.classList.remove('active'); });
+        document.getElementById('snapshotExportExcel').addEventListener('click', () => exportSnapshotExcel());
+        document.getElementById('snapshotExportQuotePdf').addEventListener('click', () => exportSnapshotPdf('quote'));
+        document.getElementById('snapshotExportInvoicePdf').addEventListener('click', () => exportSnapshotPdf('invoice'));
+    }
 
     // Settings: Logo handling
     const settingLogoInput = document.getElementById('settingLogoInput');
@@ -892,7 +907,6 @@ function updateCartDisplay() {
         createQuoteBtn.disabled = true;
         if (createInvoiceBtn) createInvoiceBtn.disabled = true;
         const _copyBtn1 = document.getElementById('copyCartBtn'); if (_copyBtn1) _copyBtn1.disabled = true;
-        const _saveBtn1 = document.getElementById('saveOrderBtn'); if (_saveBtn1) _saveBtn1.disabled = true;
         // Batch & clear-all stay enabled if students exist
         const hasStudents = currentState.students.length > 0;
         if (batchInvoiceBtn) batchInvoiceBtn.disabled = !hasStudents;
@@ -906,7 +920,6 @@ function updateCartDisplay() {
         createQuoteBtn.disabled = true;
         if (createInvoiceBtn) createInvoiceBtn.disabled = true;
         const _copyBtn2 = document.getElementById('copyCartBtn'); if (_copyBtn2) _copyBtn2.disabled = true;
-        const _saveBtn2 = document.getElementById('saveOrderBtn'); if (_saveBtn2) _saveBtn2.disabled = true;
         updateTotals(0, 0);
         return;
     }
@@ -923,7 +936,6 @@ function updateCartDisplay() {
     if (createInvoiceBtn) createInvoiceBtn.disabled = false;
     if (batchInvoiceBtn) batchInvoiceBtn.disabled = false;
     const _copyBtn3 = document.getElementById('copyCartBtn'); if (_copyBtn3) _copyBtn3.disabled = false;
-    const _saveBtn3 = document.getElementById('saveOrderBtn'); if (_saveBtn3) _saveBtn3.disabled = false;
 
     let totalW = 0, totalR = 0;
 
@@ -1611,22 +1623,182 @@ async function copyCartToStudent() {
 }
 
 
-// === ORDER HISTORY (Enhanced) ===
+// === ORDER SNAPSHOT (Save/Load/Export) ===
 
-async function saveOrderHistory() {
-    if (!currentState.currentStudentId || currentState.currentCart.length === 0) {
-        alert('生徒とカート内容が必要です');
+async function saveSnapshot() {
+    // Collect all students' cart data
+    const snapshotStudents = [];
+    for (const student of currentState.students) {
+        const cart = await getCart(student.id);
+        if (cart && cart.length > 0) {
+            snapshotStudents.push({
+                name: student.name,
+                grade: student.grade || '',
+                items: cart.map(item => ({
+                    title: item.title,
+                    price_wholesale: parseInt(item.price_wholesale) || 0,
+                    price_retail: parseInt(item.price_retail) || 0
+                }))
+            });
+        }
+    }
+
+    if (snapshotStudents.length === 0) {
+        alert('カートに教材が入っている生徒がいません');
         return;
     }
 
-    const student = currentState.students.find(s => s.id === currentState.currentStudentId);
-    const total = currentState.currentCart.reduce((sum, i) => sum + (parseInt(i.price_retail) || 0), 0);
-    const items = currentState.currentCart.map(i => i.title).join(', ');
+    const defaultName = new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: 'long' }) + '分';
+    const name = prompt('スナップショット名を入力してください:', defaultName);
+    if (!name) return;
 
-    await addHistoryRecord('注文確定',
-        `${student.name}様 | ¥${total.toLocaleString()} | ${currentState.currentCart.length}点 (${items})`
+    const snapshot = {
+        name: name,
+        date: new Date().toISOString(),
+        schoolName: currentState.settings.schoolName || '',
+        students: snapshotStudents
+    };
+
+    // Download as JSON file
+    const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    a.href = url;
+    a.download = `スナップショット_${name}_${dateStr}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    const totalItems = snapshotStudents.reduce((s, st) => s + st.items.length, 0);
+    await addHistoryRecord('スナップショット保存',
+        `${name} | ${snapshotStudents.length}名 | ${totalItems}点`
     );
-    alert(`注文履歴を保存しました\n${student.name}様: ${currentState.currentCart.length}点 ¥${total.toLocaleString()}`);
+    alert(`スナップショット「${name}」を保存しました\n(${snapshotStudents.length}名、${totalItems}点)`);
+}
+
+function loadSnapshot(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = ''; // reset for re-upload
+
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+        try {
+            const snapshot = JSON.parse(evt.target.result);
+            if (!snapshot.students || !Array.isArray(snapshot.students)) {
+                alert('無効なスナップショットファイルです');
+                return;
+            }
+            openSnapshotModal(snapshot);
+        } catch (err) {
+            alert('JSONファイルの読み込みに失敗しました: ' + err.message);
+        }
+    };
+    reader.readAsText(file);
+}
+
+function openSnapshotModal(snapshot) {
+    const modal = document.getElementById('snapshotModal');
+    modal._snapshotData = snapshot;
+
+    // Info section
+    const infoEl = document.getElementById('snapshotInfo');
+    const d = new Date(snapshot.date);
+    const dateStr = d.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const totalItems = snapshot.students.reduce((s, st) => s + st.items.length, 0);
+    const grandTotal = snapshot.students.reduce((s, st) => s + st.items.reduce((ss, i) => ss + (i.price_retail || 0), 0), 0);
+    infoEl.innerHTML = `
+        <strong>📁 ${snapshot.name}</strong><br>
+        <span style="color: var(--text-muted, #64748b);">保存日時: ${dateStr}</span><br>
+        <span>${snapshot.students.length}名 | ${totalItems}点 | 合計 ¥${grandTotal.toLocaleString()}</span>
+    `;
+
+    // Student list
+    const listEl = document.getElementById('snapshotStudentList');
+    listEl.innerHTML = '';
+
+    snapshot.students.forEach(st => {
+        const total = st.items.reduce((s, i) => s + (i.price_retail || 0), 0);
+        const div = document.createElement('div');
+        div.style.cssText = 'padding: 0.75rem; border-bottom: 1px solid var(--border, #e2e8f0);';
+        div.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.25rem;">
+                <strong>${st.name}${st.grade ? ' (' + st.grade + ')' : ''}</strong>
+                <span style="color: var(--text-muted, #64748b); font-size: 0.85rem;">${st.items.length}点 ¥${total.toLocaleString()}</span>
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-muted, #64748b); line-height: 1.4;">
+                ${st.items.map(i => i.title).join('、')}
+            </div>
+        `;
+        listEl.appendChild(div);
+    });
+
+    modal.classList.add('active');
+}
+
+function exportSnapshotExcel() {
+    const modal = document.getElementById('snapshotModal');
+    const snapshot = modal._snapshotData;
+    if (!snapshot) return;
+
+    const rows = [['生徒名', '学年', '教材名', '仕入価格', '販売価格']];
+    snapshot.students.forEach(st => {
+        st.items.forEach(item => {
+            rows.push([st.name, st.grade, item.title, item.price_wholesale, item.price_retail]);
+        });
+    });
+
+    // Summary rows
+    rows.push([]);
+    rows.push(['サマリー']);
+    rows.push(['生徒名', '教材数', '仕入合計', '販売合計']);
+    snapshot.students.forEach(st => {
+        const wTotal = st.items.reduce((s, i) => s + (i.price_wholesale || 0), 0);
+        const rTotal = st.items.reduce((s, i) => s + (i.price_retail || 0), 0);
+        rows.push([st.name, st.items.length, wTotal, rTotal]);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, snapshot.name || 'スナップショット');
+
+    const dateStr = new Date(snapshot.date).toISOString().slice(0, 10).replace(/-/g, '');
+    XLSX.writeFile(wb, `${snapshot.name}_${dateStr}.xlsx`);
+}
+
+async function exportSnapshotPdf(docType) {
+    const modal = document.getElementById('snapshotModal');
+    const snapshot = modal._snapshotData;
+    if (!snapshot) return;
+
+    const typeName = docType === 'quote' ? '見積書' : '請求書';
+
+    try {
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
+        pdf.deletePage(1);
+
+        const template = document.getElementById('invoice-template');
+
+        for (const st of snapshot.students) {
+            populateInvoiceTemplate(template, st.name, st.items, docType);
+            const canvas = await renderInvoicePdfPage(template);
+
+            pdf.addPage();
+            const imgWidth = 210;
+            const imgHeight = (canvas.height * imgWidth) / canvas.width;
+            const imgData = canvas.toDataURL('image/jpeg', 0.85);
+            pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
+        }
+
+        const dateStr = new Date(snapshot.date).toISOString().slice(0, 10).replace(/-/g, '');
+        pdf.save(`${typeName}_${snapshot.name}_${dateStr}.pdf`);
+
+        modal.classList.remove('active');
+    } catch (err) {
+        console.error('Snapshot PDF error:', err);
+        alert(`${typeName}PDFの生成に失敗しました: ` + err.message);
+    }
 }
 
 

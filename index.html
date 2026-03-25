@@ -251,10 +251,15 @@
                             style="flex: 1; font-size: 0.85rem; padding: 0.5rem;">
                             <i class="fa-solid fa-copy"></i> カートコピー
                         </button>
-                        <button class="btn-secondary" id="saveOrderBtn" disabled
+                        <button class="btn-secondary" id="saveSnapshotBtn"
                             style="flex: 1; font-size: 0.85rem; padding: 0.5rem;">
-                            <i class="fa-solid fa-floppy-disk"></i> 注文保存
+                            <i class="fa-solid fa-download"></i> 保存
                         </button>
+                        <button class="btn-secondary" id="loadSnapshotBtn"
+                            style="flex: 1; font-size: 0.85rem; padding: 0.5rem;">
+                            <i class="fa-solid fa-upload"></i> 呼出
+                        </button>
+                        <input type="file" id="snapshotFileInput" accept=".json" style="display: none;">
                     </div>
                     <button class="btn-danger-outline full-width" id="clearAllCartsBtn"
                         style="font-size: 0.8rem; padding: 0.5rem; margin-top: 0.75rem;">
@@ -263,6 +268,28 @@
                 </div>
             </div>
         </aside>
+    </div>
+
+    <!-- Snapshot Viewer Modal -->
+    <div class="modal-overlay" id="snapshotModal">
+        <div class="modal-content medium-modal">
+            <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-box-archive"></i> スナップショット呼出</h2>
+            </div>
+            <div class="modal-body">
+                <div id="snapshotInfo" style="margin-bottom: 1rem; padding: 0.75rem; background: var(--input-bg, #f8fafc); border-radius: 8px; font-size: 0.9rem;"></div>
+                <div id="snapshotStudentList" style="max-height: 45vh; overflow-y: auto; border: 1px solid var(--border, #e2e8f0); border-radius: 8px;"></div>
+            </div>
+            <div class="modal-footer" style="flex-wrap: wrap; gap: 0.5rem;">
+                <button class="btn-secondary close-modal-btn">閉じる</button>
+                <button class="btn-primary" id="snapshotExportExcel"><i class="fa-solid fa-file-excel"></i> Excel出力</button>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn-primary" id="snapshotExportQuotePdf"><i class="fa-solid fa-file-lines"></i> 見積PDF</button>
+                    <button class="btn-primary" id="snapshotExportInvoicePdf"><i class="fa-solid fa-file-invoice-dollar"></i> 請求PDF</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Batch Invoice Modal -->
