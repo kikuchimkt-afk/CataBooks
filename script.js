@@ -250,6 +250,9 @@ function setupEventListeners() {
     const navSettings = document.getElementById('navSettings');
     if (navSettings) navSettings.addEventListener('click', openSettings);
 
+    const navHelp = document.getElementById('navHelp');
+    if (navHelp) navHelp.addEventListener('click', () => updateViewMode('help'));
+
     const saveSettingsBtn = document.getElementById('saveSettingsBtn');
     if (saveSettingsBtn) saveSettingsBtn.addEventListener('click', saveSettingsHandler);
 
@@ -384,6 +387,20 @@ function updateViewMode(mode) {
         const activeEl = document.getElementById(activeId);
         if (activeEl) activeEl.classList.add('active');
     }
+
+    const filters = document.getElementById('filtersSection');
+    const sortDropdown = document.querySelector('.sort-dropdown');
+
+    if (mode === 'history' || mode === 'settings' || mode === 'materials' || mode === 'help') {
+        if (filters) filters.style.display = 'none';
+        if (sortDropdown) sortDropdown.style.display = 'none';
+        document.querySelector('.search-container').style.display = 'none';
+    } else {
+        if (filters && !currentState.search) filters.style.display = 'block';
+        if (sortDropdown) sortDropdown.style.display = 'block';
+        document.querySelector('.search-container').style.display = 'flex';
+    }
+
     renderGrid();
 }
 
@@ -835,6 +852,11 @@ function renderGrid() {
         return;
     }
 
+    if (currentState.viewMode === 'help') {
+        renderHelp();
+        return;
+    }
+
     if (currentState.viewMode === 'materials') {
         renderMaterialsManagement();
         return;
@@ -1189,6 +1211,63 @@ async function renderHistory() {
     grid.appendChild(list);
 }
 
+
+// === HELP MANUAL ===
+
+function renderHelp() {
+    document.querySelector('#resultsCount').innerHTML = `使い方ガイド`;
+    grid.innerHTML = '';
+
+    const content = document.createElement('div');
+    content.style.cssText = 'grid-column: 1/-1; background: var(--surface, white); border-radius: 12px; padding: 2rem; border: 1px solid var(--border, #e2e8f0); color: var(--text-main, #1e293b); font-size: 0.95rem; line-height: 1.6;';
+
+    content.innerHTML = `
+        <h2 style="font-size: 1.5rem; color: var(--primary-color, #4f46e5); margin-bottom: 1.5rem; border-bottom: 2px solid var(--primary-color, #4f46e5); padding-bottom: 0.5rem;">
+            <i class="fa-solid fa-circle-question"></i> CataBooks 取扱説明書
+        </h2>
+
+        <div style="margin-bottom: 2rem;">
+            <h3 style="font-size: 1.1rem; border-left: 4px solid var(--accent-blue, #3b82f6); padding-left: 0.75rem; margin-bottom: 1rem;">1. 基本的な使い方（見積書作成）</h3>
+            <ol style="margin-left: 1.5rem; margin-bottom: 1rem;">
+                <li style="margin-bottom: 0.5rem;">右側のパネルの<b>「対象生徒」</b>ドロップダウンから生徒を選択します。</li>
+                <li style="margin-bottom: 0.5rem;">画面中央の教材リストから、必要な教材の<b>「カートに追加」</b>ボタンをクリックします。（上部の検索ボックスや絞り込みボタンで探せます）</li>
+                <li style="margin-bottom: 0.5rem;">右側のカートに教材が追加されます。</li>
+                <li style="margin-bottom: 0.5rem;">最後に右下にある<b>「見積書作成」</b>ボタンを押すと、印刷用の見積書画面が開きます。</li>
+            </ol>
+            <div style="background: var(--wholesale-bg, #e0e7ff); padding: 0.75rem; border-radius: 6px; font-size: 0.9rem;">
+                <i class="fa-solid fa-lightbulb" style="color: var(--accent-orange, #f59e0b);"></i> <b>Tip:</b> 「注文保存」ボタンを押すと、その生徒の注文履歴が記録されます。
+            </div>
+        </div>
+
+        <div style="margin-bottom: 2rem;">
+            <h3 style="font-size: 1.1rem; border-left: 4px solid var(--accent-green, #10b981); padding-left: 0.75rem; margin-bottom: 1rem;">2. 教材・生徒の登録（Excel一括登録）</h3>
+            <ul style="margin-left: 1.5rem; margin-bottom: 1rem;">
+                <li style="margin-bottom: 0.5rem;"><b>教材の登録</b>：左メニューの「教材管理」を開き、「サンプルDL」でExcel形式をダウンロード。記入後、「Excel一括登録」からアップロードします。</li>
+                <li style="margin-bottom: 0.5rem;"><b>生徒の登録</b>：右パネル対象生徒の横にある「📥 アイコン（一括登録）」から同様にExcelで一括登録できます。</li>
+            </ul>
+        </div>
+
+        <div style="margin-bottom: 2rem;">
+            <h3 style="font-size: 1.1rem; border-left: 4px solid var(--accent-orange, #f59e0b); padding-left: 0.75rem; margin-bottom: 1rem;">3. 全体発注用リストの作成</h3>
+            <p style="margin-bottom: 0.5rem;">全生徒のカートに教材を入れ終わったら、右下のボタンを活用します。</p>
+            <ul style="margin-left: 1.5rem; margin-bottom: 1rem;">
+                <li style="margin-bottom: 0.5rem;"><b>「全生徒リスト」</b>：どの生徒にどの教材を渡すかの一覧表（Excel）がダウンロードされます。配布時のチェックに使えます。</li>
+                <li style="margin-bottom: 0.5rem;"><b>「発注用集計」</b>：教材ごとの合計冊数が集計された表（Excel）がダウンロードされます。問屋さんへの発注に使えます。</li>
+            </ul>
+        </div>
+
+        <div style="margin-bottom: 2rem;">
+            <h3 style="font-size: 1.1rem; border-left: 4px solid var(--text-muted, #64748b); padding-left: 0.75rem; margin-bottom: 1rem;">4. その他の便利機能</h3>
+            <ul style="margin-left: 1.5rem; margin-bottom: 1rem;">
+                <li style="margin-bottom: 0.5rem;"><b>カートコピー</b>：Aさんのカート内容をBさんにそのまま丸写しできます。兄弟や同じカリキュラムの生徒に便利です。</li>
+                <li style="margin-bottom: 0.5rem;"><b>教材の一括削除</b>：左メニュー「教材管理」で、不要な教材の左側をチェックし、「選択を一括削除」でまとめて消せます。</li>
+                <li style="margin-bottom: 0.5rem;"><b>ダークモード</b>：左メニューの一番下にあるスイッチで、画面を暗く目に優しい色に変更できます。</li>
+            </ul>
+        </div>
+    `;
+
+    grid.appendChild(content);
+}
 
 // === EXPORT / QUOTATION ===
 
