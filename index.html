@@ -144,6 +144,8 @@
                         <div class="student-actions">
                             <button class="btn-xs" id="importStudentBtn" title="Excel一括登録"><i
                                     class="fa-solid fa-file-import"></i></button>
+                            <button class="btn-xs" id="dlStudentTemplateBtn" title="生徒登録サンプルDL"><i
+                                    class="fa-solid fa-download"></i></button>
                             <button class="btn-xs danger" id="deleteAllStudentsBtn" title="全生徒のカートを空にする"><i
                                     class="fa-solid fa-trash-can"></i></button>
                         </div>
@@ -160,6 +162,8 @@
                     </div>
                 </div>
             </div>
+            <input type="file" id="importStudentInput" accept=".xlsx,.xls" style="display:none">
+            <input type="file" id="importMaterialInput" accept=".xlsx,.xls" style="display:none">
 
             <div class="cart-content">
                 <div class="cart-empty-state" id="cartEmptyState">

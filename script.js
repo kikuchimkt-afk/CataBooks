@@ -326,6 +326,14 @@ function setupEventListeners() {
     if (importStudentBtn) importStudentBtn.addEventListener('click', () => importStudentInput.click());
     if (importStudentInput) importStudentInput.addEventListener('change', handleExcelImport);
 
+    // Student Template Download
+    const dlStudentTemplateBtn = document.getElementById('dlStudentTemplateBtn');
+    if (dlStudentTemplateBtn) dlStudentTemplateBtn.addEventListener('click', downloadStudentTemplate);
+
+    // Material Import from Excel
+    const importMaterialInput = document.getElementById('importMaterialInput');
+    if (importMaterialInput) importMaterialInput.addEventListener('change', handleMaterialExcelImport);
+
     // Delete All Carts
     if (deleteAllStudentsBtn) deleteAllStudentsBtn.addEventListener('click', async () => {
         if (currentState.students.length === 0) return;
@@ -538,7 +546,104 @@ async function handleExcelImport(e) {
 }
 
 
-// === CART LOGIC (Supabase) ===
+// === TEMPLATE DOWNLOADS & MATERIAL BULK IMPORT ===
+
+function downloadStudentTemplate() {
+    const sampleData = [
+        { '氏名': '山田太郎', '学年': '中2' },
+        { '氏名': '佐藤花子', '学年': '高3' },
+        { '氏名': '田中一郎', '学年': '小5' }
+    ];
+    const ws = XLSX.utils.json_to_sheet(sampleData);
+    ws['!cols'] = [{ wch: 20 }, { wch: 10 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '生徒リスト');
+    XLSX.writeFile(wb, '生徒登録サンプル.xlsx');
+}
+
+function downloadMaterialTemplate() {
+    const sampleData = [
+        { '教材ID': '111-123456-11', '教材名': '標準新演習 中1 英語', '仕入価格': 1200, '販売価格': 1800 },
+        { '教材ID': '222-654321-22', '教材名': 'フォレスタ 中2 数学', '仕入価格': 1500, '販売価格': 2200 },
+        { '教材ID': '333-111111-33', '教材名': '英検3級 過去問', '仕入価格': 900, '販売価格': 1400 }
+    ];
+    const ws = XLSX.utils.json_to_sheet(sampleData);
+    ws['!cols'] = [{ wch: 18 }, { wch: 30 }, { wch: 12 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '教材リスト');
+    XLSX.writeFile(wb, '教材登録サンプル.xlsx');
+}
+
+async function handleMaterialExcelImport(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async function(ev) {
+        try {
+            const data = new Uint8Array(ev.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const ws = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+            if (jsonData.length < 2) {
+                alert('データが見つかりませんでした');
+                return;
+            }
+
+            const header = jsonData[0];
+            let idIdx = -1, titleIdx = -1, wholesaleIdx = -1, retailIdx = -1;
+            header.forEach((cell, idx) => {
+                const c = (cell || '').toString();
+                if (c.includes('ID') || c.includes('id') || c.includes('教材ID')) idIdx = idx;
+                if (c.includes('教材名') || c.includes('品名') || c.includes('タイトル')) titleIdx = idx;
+                if (c.includes('仕入')) wholesaleIdx = idx;
+                if (c.includes('販売') || c.includes('価格')) retailIdx = idx;
+            });
+
+            if (titleIdx === -1) {
+                alert('「教材名」列が見つかりません。\nサンプルファイルの書式を参考にしてください。');
+                return;
+            }
+
+            let addCount = 0, skipCount = 0;
+            for (let i = 1; i < jsonData.length; i++) {
+                const row = jsonData[i];
+                if (!row || row.length === 0) continue;
+
+                const title = (row[titleIdx] || '').toString().trim();
+                if (!title) continue;
+
+                const id = idIdx >= 0 && row[idIdx]
+                    ? row[idIdx].toString().trim()
+                    : 'M-' + Date.now() + '-' + i;
+
+                const wholesale = wholesaleIdx >= 0 ? (parseInt(row[wholesaleIdx]) || 0) : 0;
+                const retail = retailIdx >= 0 ? (parseInt(row[retailIdx]) || 0) : 0;
+
+                if (enhancedData.some(m => m.id === id)) {
+                    skipCount++;
+                    continue;
+                }
+
+                const result = await addMaterial({ id, title, price_wholesale: wholesale, price_retail: retail });
+                if (result) addCount++;
+            }
+
+            await reloadMaterials();
+            let msg = `${addCount}件の教材をインポートしました`;
+            if (skipCount > 0) msg += `\n(重複スキップ: ${skipCount}件)`;
+            await addHistoryRecord('Excelインポート', `教材を${addCount}件インポートしました`);
+            alert(msg);
+
+        } catch (error) {
+            console.error(error);
+            alert('ファイルの読み込みに失敗しました。\nExcelファイル形式を確認してください。');
+        }
+        e.target.value = '';
+    };
+    reader.readAsArrayBuffer(file);
+}
 
 async function addToCartAsync(item) {
     if (!currentState.currentStudentId) {
@@ -767,17 +872,29 @@ async function toggleFavoriteAsync(itemId) {
 function renderMaterialsManagement() {
     document.querySelector('#resultsCount').innerHTML = `教材管理: <span class="count-animate">${enhancedData.length}</span> 件`;
 
-    // Add header with "Add" button
+    // Add header with action buttons
     const header = document.createElement('div');
-    header.style.cssText = 'grid-column: 1/-1; display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;';
+    header.style.cssText = 'grid-column: 1/-1; display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;';
     header.innerHTML = `
         <h3 style="font-size:1.1rem; color:#334155;">教材一覧 (クリックで編集)</h3>
-        <button class="btn-primary" id="addMaterialBtnTop" style="font-size:0.9rem; padding:0.5rem 1rem;">
-            <i class="fa-solid fa-plus"></i> 新規教材追加
-        </button>
+        <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+            <button class="btn-secondary" id="dlMaterialTemplateBtn" style="font-size:0.85rem; padding:0.4rem 0.75rem;">
+                <i class="fa-solid fa-download"></i> サンプルDL
+            </button>
+            <button class="btn-secondary" id="importMaterialBtnTop" style="font-size:0.85rem; padding:0.4rem 0.75rem;">
+                <i class="fa-solid fa-file-import"></i> Excel一括登録
+            </button>
+            <button class="btn-primary" id="addMaterialBtnTop" style="font-size:0.85rem; padding:0.4rem 0.75rem;">
+                <i class="fa-solid fa-plus"></i> 新規追加
+            </button>
+        </div>
     `;
     grid.appendChild(header);
     header.querySelector('#addMaterialBtnTop').addEventListener('click', openAddMaterialModal);
+    header.querySelector('#dlMaterialTemplateBtn').addEventListener('click', downloadMaterialTemplate);
+    header.querySelector('#importMaterialBtnTop').addEventListener('click', () => {
+        document.getElementById('importMaterialInput').click();
+    });
 
     // Search filter for materials management
     let items = enhancedData;
