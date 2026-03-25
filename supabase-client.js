@@ -26,12 +26,27 @@ function initSupabase() {
 // ============================================================
 
 async function loadMaterials() {
-    const { data, error } = await supabase
-        .from('materials')
-        .select('*')
-        .order('title');
-    if (error) { console.error('[DB] loadMaterials:', error); return []; }
-    return data;
+    // Supabase default limit is 1000, so paginate to get all
+    let allData = [];
+    const PAGE_SIZE = 1000;
+    let from = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+        const { data, error } = await supabase
+            .from('materials')
+            .select('*')
+            .order('title')
+            .range(from, from + PAGE_SIZE - 1);
+        if (error) { console.error('[DB] loadMaterials:', error); break; }
+        allData = allData.concat(data);
+        if (data.length < PAGE_SIZE) {
+            hasMore = false;
+        } else {
+            from += PAGE_SIZE;
+        }
+    }
+    return allData;
 }
 
 async function addMaterial(material) {
