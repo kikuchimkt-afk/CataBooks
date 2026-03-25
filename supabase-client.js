@@ -130,6 +130,16 @@ async function addStudent(name, grade) {
     return data[0];
 }
 
+async function updateStudent(studentId, updates) {
+    const { data, error } = await supabase
+        .from('students')
+        .update(updates)
+        .eq('id', studentId)
+        .select();
+    if (error) { console.error('[DB] updateStudent:', error); return null; }
+    return data[0];
+}
+
 async function deleteStudent(studentId) {
     // cart_items are CASCADE deleted
     const { error } = await supabase

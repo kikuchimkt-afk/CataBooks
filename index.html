@@ -71,6 +71,13 @@
                 </div>
             </nav>
 
+            <div class="dark-mode-toggle">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="darkModeToggle">
+                    <span class="toggle-slider"></span>
+                </label>
+                <span><i class="fa-solid fa-moon"></i> ダークモード</span>
+            </div>
 
         </aside>
 
@@ -156,6 +163,9 @@
                         </select>
                         <button class="btn-icon" id="addStudentBtn" title="新規生徒追加"><i
                                 class="fa-solid fa-user-plus"></i></button>
+                        <button class="btn-icon" id="editStudentBtn" title="生徒情報を編集"
+                            style="background: #e0f2fe; color: #0284c7; margin-left: 5px;"><i
+                                class="fa-solid fa-user-pen"></i></button>
                         <button class="btn-icon danger-icon" id="deleteStudentBtn" title="表示中の生徒を削除"
                             style="background: #fee2e2; color: #ef4444; margin-left: 5px;"><i
                                 class="fa-solid fa-user-xmark"></i></button>
@@ -164,6 +174,29 @@
             </div>
             <input type="file" id="importStudentInput" accept=".xlsx,.xls" style="display:none">
             <input type="file" id="importMaterialInput" accept=".xlsx,.xls" style="display:none">
+
+            <!-- Edit Student Modal -->
+            <div class="modal-overlay" id="editStudentModal">
+                <div class="modal-content small-modal">
+                    <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+                    <div class="modal-header">
+                        <h2><i class="fa-solid fa-user-pen"></i> 生徒情報の編集</h2>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label>氏名 <span class="badge-required">必須</span></label>
+                            <input type="text" id="editStudentName" placeholder="例: 山田太郎">
+                        </div>
+                        <div class="form-group">
+                            <label>学年</label>
+                            <input type="text" id="editStudentGrade" placeholder="例: 中2">
+                        </div>
+                        <button class="btn-primary full-width" id="saveEditStudentBtn">
+                            <i class="fa-solid fa-check"></i> 保存
+                        </button>
+                    </div>
+                </div>
+            </div>
 
             <div class="cart-content">
                 <div class="cart-empty-state" id="cartEmptyState">
@@ -198,6 +231,16 @@
                         <button class="btn-primary" id="exportOrderSheetBtn" disabled
                             style="flex: 1; font-size: 0.85rem; padding: 0.5rem;">
                             <i class="fa-solid fa-cart-flatbed"></i> 発注用集計
+                        </button>
+                    </div>
+                    <div class="export-group" style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                        <button class="btn-secondary" id="copyCartBtn" disabled
+                            style="flex: 1; font-size: 0.85rem; padding: 0.5rem;">
+                            <i class="fa-solid fa-copy"></i> カートコピー
+                        </button>
+                        <button class="btn-secondary" id="saveOrderBtn" disabled
+                            style="flex: 1; font-size: 0.85rem; padding: 0.5rem;">
+                            <i class="fa-solid fa-floppy-disk"></i> 注文保存
                         </button>
                     </div>
                 </div>

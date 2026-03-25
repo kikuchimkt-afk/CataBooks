@@ -115,6 +115,8 @@ window.addEventListener('DOMContentLoaded', async () => {
     // 5. Attach Event Listeners
     setupEventListeners();
 
+    // 6. Dark Mode
+    initDarkMode();
     // 6. Force "Active" on all All-buttons
     ['levelFilters', 'subjectFilters', 'specialFilters'].forEach(id => {
         const container = document.getElementById(id);
@@ -334,6 +336,16 @@ function setupEventListeners() {
     const importMaterialInput = document.getElementById('importMaterialInput');
     if (importMaterialInput) importMaterialInput.addEventListener('change', handleMaterialExcelImport);
 
+    // Edit Student
+    const editStudentBtn = document.getElementById('editStudentBtn');
+    if (editStudentBtn) editStudentBtn.addEventListener('click', openEditStudentModal);
+    const saveEditStudentBtn = document.getElementById('saveEditStudentBtn');
+    if (saveEditStudentBtn) saveEditStudentBtn.addEventListener('click', saveEditStudent);
+    const editStudentModal = document.getElementById('editStudentModal');
+    if (editStudentModal) {
+        editStudentModal.querySelector('.close-modal').addEventListener('click', () => editStudentModal.classList.remove('active'));
+        editStudentModal.addEventListener('click', (e) => { if (e.target === editStudentModal) editStudentModal.classList.remove('active'); });
+    }
     // Delete All Carts
     if (deleteAllStudentsBtn) deleteAllStudentsBtn.addEventListener('click', async () => {
         if (currentState.students.length === 0) return;
@@ -352,6 +364,12 @@ function setupEventListeners() {
     if (createQuoteBtn) createQuoteBtn.addEventListener('click', handleCreateQuote);
     if (exportStudentListBtn) exportStudentListBtn.addEventListener('click', handleExportStudentList);
     if (exportOrderSheetBtn) exportOrderSheetBtn.addEventListener('click', handleExportOrderSheet);
+
+    // Cart copy & order save
+    const copyCartBtn = document.getElementById('copyCartBtn');
+    if (copyCartBtn) copyCartBtn.addEventListener('click', copyCartToStudent);
+    const saveOrderBtn = document.getElementById('saveOrderBtn');
+    if (saveOrderBtn) saveOrderBtn.addEventListener('click', saveOrderHistory);
 }
 
 
@@ -482,6 +500,47 @@ function renderStudentSelect() {
         if (student.id === currentState.currentStudentId) option.selected = true;
         studentSelect.appendChild(option);
     });
+}
+
+function openEditStudentModal() {
+    if (!currentState.currentStudentId) {
+        alert('編集する生徒を選択してください');
+        return;
+    }
+    const student = currentState.students.find(s => s.id === currentState.currentStudentId);
+    if (!student) return;
+
+    document.getElementById('editStudentName').value = student.name || '';
+    document.getElementById('editStudentGrade').value = student.grade || '';
+    document.getElementById('editStudentModal').classList.add('active');
+    setTimeout(() => document.getElementById('editStudentName').focus(), 100);
+}
+
+async function saveEditStudent() {
+    const name = document.getElementById('editStudentName').value.trim();
+    const grade = document.getElementById('editStudentGrade').value.trim();
+
+    if (!name) {
+        alert('氏名は必須です');
+        return;
+    }
+
+    const result = await updateStudent(currentState.currentStudentId, { name, grade });
+    if (result) {
+        // Update local state
+        const idx = currentState.students.findIndex(s => s.id === currentState.currentStudentId);
+        if (idx >= 0) {
+            currentState.students[idx].name = name;
+            currentState.students[idx].grade = grade;
+        }
+        renderStudentSelect();
+        await addHistoryRecord('生徒編集', `${name} (${grade}) の情報を更新しました`);
+        alert('生徒情報を更新しました');
+    } else {
+        alert('更新に失敗しました');
+    }
+
+    document.getElementById('editStudentModal').classList.remove('active');
 }
 
 async function handleExcelImport(e) {
@@ -682,6 +741,8 @@ function updateCartDisplay() {
         cartEmptyState.style.display = 'flex';
         cartEmptyState.querySelector('p').innerHTML = '生徒を選択して<br>教材を追加してください';
         createQuoteBtn.disabled = true;
+        const _copyBtn1 = document.getElementById('copyCartBtn'); if (_copyBtn1) _copyBtn1.disabled = true;
+        const _saveBtn1 = document.getElementById('saveOrderBtn'); if (_saveBtn1) _saveBtn1.disabled = true;
         updateTotals(0, 0);
         return;
     }
@@ -690,6 +751,8 @@ function updateCartDisplay() {
         cartEmptyState.style.display = 'flex';
         cartEmptyState.querySelector('p').innerHTML = 'カートは空です';
         createQuoteBtn.disabled = true;
+        const _copyBtn2 = document.getElementById('copyCartBtn'); if (_copyBtn2) _copyBtn2.disabled = true;
+        const _saveBtn2 = document.getElementById('saveOrderBtn'); if (_saveBtn2) _saveBtn2.disabled = true;
         updateTotals(0, 0);
         return;
     }
@@ -703,6 +766,8 @@ function updateCartDisplay() {
     if (exportStudentListBtn) exportStudentListBtn.disabled = false;
     if (exportOrderSheetBtn) exportOrderSheetBtn.disabled = false;
     createQuoteBtn.disabled = false;
+    const _copyBtn3 = document.getElementById('copyCartBtn'); if (_copyBtn3) _copyBtn3.disabled = false;
+    const _saveBtn3 = document.getElementById('saveOrderBtn'); if (_saveBtn3) _saveBtn3.disabled = false;
 
     let totalW = 0, totalR = 0;
 
@@ -876,8 +941,11 @@ function renderMaterialsManagement() {
     const header = document.createElement('div');
     header.style.cssText = 'grid-column: 1/-1; display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:0.5rem;';
     header.innerHTML = `
-        <h3 style="font-size:1.1rem; color:#334155;">教材一覧 (クリックで編集)</h3>
+        <h3 style="font-size:1.1rem; color:var(--text-primary, #334155);">教材一覧 (クリックで編集)</h3>
         <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+            <button class="btn-secondary" id="exportMaterialsBtn" style="font-size:0.85rem; padding:0.4rem 0.75rem;">
+                <i class="fa-solid fa-file-excel"></i> 全教材Excel出力
+            </button>
             <button class="btn-secondary" id="dlMaterialTemplateBtn" style="font-size:0.85rem; padding:0.4rem 0.75rem;">
                 <i class="fa-solid fa-download"></i> サンプルDL
             </button>
@@ -892,9 +960,30 @@ function renderMaterialsManagement() {
     grid.appendChild(header);
     header.querySelector('#addMaterialBtnTop').addEventListener('click', openAddMaterialModal);
     header.querySelector('#dlMaterialTemplateBtn').addEventListener('click', downloadMaterialTemplate);
-    header.querySelector('#importMaterialBtnTop').addEventListener('click', () => {
-        document.getElementById('importMaterialInput').click();
+    header.querySelector('#importMaterialBtnTop').addEventListener('click', () => document.getElementById('importMaterialInput').click());
+    header.querySelector('#exportMaterialsBtn').addEventListener('click', handleExportAllMaterials);
+
+    // Batch actions bar
+    const batchBar = document.createElement('div');
+    batchBar.id = 'materialBatchBar';
+    batchBar.style.cssText = 'grid-column:1/-1; display:none; align-items:center; gap:1rem; padding:0.75rem 1rem; background:var(--danger-bg, #fef2f2); border:1px solid var(--danger-border, #fecaca); border-radius:8px; margin-bottom:0.5rem;';
+    batchBar.innerHTML = `
+        <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
+            <input type="checkbox" id="selectAllMaterials"> <span>全選択</span>
+        </label>
+        <span id="selectedCount" style="font-size:0.9rem; color:#666;">0件選択中</span>
+        <button class="btn-secondary" id="batchDeleteBtn" style="font-size:0.85rem; padding:0.4rem 0.75rem; background:#fee2e2; color:#ef4444; border-color:#fecaca;">
+            <i class="fa-solid fa-trash"></i> 選択を一括削除
+        </button>
+    `;
+    grid.appendChild(batchBar);
+
+    const selectAllCb = batchBar.querySelector('#selectAllMaterials');
+    selectAllCb.addEventListener('change', (e) => {
+        document.querySelectorAll('.material-checkbox').forEach(cb => { cb.checked = e.target.checked; });
+        updateBatchCount();
     });
+    batchBar.querySelector('#batchDeleteBtn').addEventListener('click', handleBatchDelete);
 
     // Search filter for materials management
     let items = enhancedData;
@@ -905,17 +994,18 @@ function renderMaterialsManagement() {
 
     // Render as a table-like list
     const table = document.createElement('div');
-    table.style.cssText = 'grid-column: 1/-1; background: white; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0;';
+    table.style.cssText = 'grid-column: 1/-1; background: var(--card-bg, white); border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color, #e2e8f0);';
 
     items.forEach(item => {
         const row = document.createElement('div');
-        row.style.cssText = 'display:flex; align-items:center; padding:0.75rem 1rem; border-bottom:1px solid #f1f5f9; cursor:pointer; transition:background 0.15s;';
-        row.onmouseover = () => row.style.background = '#f8fafc';
+        row.style.cssText = 'display:flex; align-items:center; padding:0.75rem 1rem; border-bottom:1px solid var(--border-color, #f1f5f9); cursor:pointer; transition:background 0.15s;';
+        row.onmouseover = () => row.style.background = 'var(--hover-bg, #f8fafc)';
         row.onmouseout = () => row.style.background = '';
         row.innerHTML = `
+            <input type="checkbox" class="material-checkbox" data-id="${item.id}" style="margin-right:0.75rem; width:18px; height:18px; cursor:pointer;" onclick="event.stopPropagation()">
             <div style="flex:1; min-width:0;">
                 <div style="font-weight:500; font-size:0.95rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${item.title}</div>
-                <div style="font-size:0.8rem; color:#94a3b8; margin-top:2px;">ID: ${item.id}</div>
+                <div style="font-size:0.8rem; color:var(--text-muted, #94a3b8); margin-top:2px;">ID: ${item.id}</div>
             </div>
             <div style="text-align:right; min-width:140px;">
                 <div style="font-size:0.85rem; color:#3730a3;">仕入 ¥${(item.price_wholesale || 0).toLocaleString()}</div>
@@ -926,17 +1016,71 @@ function renderMaterialsManagement() {
             </button>
         `;
         row.addEventListener('click', (e) => {
-            if (e.target.closest('.delete-material-btn')) return;
+            if (e.target.closest('.delete-material-btn') || e.target.closest('.material-checkbox')) return;
             openEditMaterialModal(item);
         });
         row.querySelector('.delete-material-btn').addEventListener('click', (e) => {
             e.stopPropagation();
             confirmDeleteMaterial(item);
         });
+        row.querySelector('.material-checkbox').addEventListener('change', () => {
+            updateBatchCount();
+        });
         table.appendChild(row);
     });
 
     grid.appendChild(table);
+
+    // Show batch bar if any checkbox interactions
+    document.querySelectorAll('.material-checkbox').forEach(cb => {
+        cb.addEventListener('change', () => {
+            const bar = document.getElementById('materialBatchBar');
+            bar.style.display = 'flex';
+        });
+    });
+}
+
+function updateBatchCount() {
+    const checked = document.querySelectorAll('.material-checkbox:checked');
+    const countEl = document.getElementById('selectedCount');
+    if (countEl) countEl.textContent = `${checked.length}件選択中`;
+    const bar = document.getElementById('materialBatchBar');
+    if (bar) bar.style.display = checked.length > 0 ? 'flex' : 'none';
+}
+
+async function handleBatchDelete() {
+    const checked = document.querySelectorAll('.material-checkbox:checked');
+    if (checked.length === 0) return;
+    if (!confirm(`${checked.length}件の教材を一括削除しますか？\nこの操作は元に戻せません。`)) return;
+
+    let count = 0;
+    for (const cb of checked) {
+        await deleteMaterial(cb.dataset.id);
+        count++;
+    }
+    await addHistoryRecord('一括削除', `${count}件の教材を一括削除しました`);
+    await reloadMaterials();
+    await reloadCart();
+    alert(`${count}件の教材を削除しました`);
+}
+
+async function handleExportAllMaterials() {
+    if (enhancedData.length === 0) { alert('教材データがありません'); return; }
+
+    const data = enhancedData.map(item => ({
+        '教材ID': item.id,
+        '教材名': item.title,
+        '仕入価格': item.price_wholesale || 0,
+        '販売価格': item.price_retail || 0
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws['!cols'] = [{ wch: 18 }, { wch: 35 }, { wch: 12 }, { wch: 12 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '教材一覧');
+    const filename = `教材一覧_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    await addHistoryRecord('Excel出力', `教材一覧(${data.length}件)をExcel出力しました`);
 }
 
 function openAddMaterialModal() {
@@ -1182,4 +1326,87 @@ function printQuotation(student, cartItems) {
     const win = window.open('', '_blank');
     win.document.write(htmlContent);
     win.document.close();
+}
+
+
+// === DARK MODE ===
+
+function initDarkMode() {
+    const saved = localStorage.getItem('catabooks_darkmode');
+    if (saved === 'true') {
+        document.body.classList.add('dark-mode');
+    }
+    const toggle = document.getElementById('darkModeToggle');
+    if (toggle) {
+        toggle.checked = document.body.classList.contains('dark-mode');
+        toggle.addEventListener('change', () => {
+            document.body.classList.toggle('dark-mode');
+            localStorage.setItem('catabooks_darkmode', document.body.classList.contains('dark-mode'));
+        });
+    }
+}
+
+
+// === CART COPY ===
+
+async function copyCartToStudent() {
+    if (!currentState.currentStudentId) {
+        alert('コピー元の生徒を選択してください');
+        return;
+    }
+    if (currentState.currentCart.length === 0) {
+        alert('コピー元のカートが空です');
+        return;
+    }
+
+    // Build target student list (exclude current)
+    const others = currentState.students.filter(s => s.id !== currentState.currentStudentId);
+    if (others.length === 0) {
+        alert('コピー先の生徒がいません');
+        return;
+    }
+
+    let msg = 'コピー先の生徒を番号で選択:\n';
+    others.forEach((s, i) => { msg += `${i + 1}. ${s.name} ${s.grade ? `(${s.grade})` : ''}\n`; });
+    const choice = prompt(msg);
+    if (!choice) return;
+
+    const idx = parseInt(choice) - 1;
+    if (idx < 0 || idx >= others.length) {
+        alert('無効な選択です');
+        return;
+    }
+
+    const targetStudent = others[idx];
+    let addCount = 0, skipCount = 0;
+
+    for (const item of currentState.currentCart) {
+        const result = await addToCartDB(targetStudent.id, item.id);
+        if (result && !result.duplicate) addCount++;
+        else skipCount++;
+    }
+
+    await addHistoryRecord('カートコピー',
+        `${currentState.students.find(s => s.id === currentState.currentStudentId).name} → ${targetStudent.name} (${addCount}件追加, ${skipCount}件スキップ)`
+    );
+    alert(`${targetStudent.name}のカートに${addCount}件コピーしました${skipCount > 0 ? `\n(重複スキップ: ${skipCount}件)` : ''}`);
+}
+
+
+// === ORDER HISTORY (Enhanced) ===
+
+async function saveOrderHistory() {
+    if (!currentState.currentStudentId || currentState.currentCart.length === 0) {
+        alert('生徒とカート内容が必要です');
+        return;
+    }
+
+    const student = currentState.students.find(s => s.id === currentState.currentStudentId);
+    const total = currentState.currentCart.reduce((sum, i) => sum + (parseInt(i.price_retail) || 0), 0);
+    const items = currentState.currentCart.map(i => i.title).join(', ');
+
+    await addHistoryRecord('注文確定',
+        `${student.name}様 | ¥${total.toLocaleString()} | ${currentState.currentCart.length}点 (${items})`
+    );
+    alert(`注文履歴を保存しました\n${student.name}様: ${currentState.currentCart.length}点 ¥${total.toLocaleString()}`);
 }

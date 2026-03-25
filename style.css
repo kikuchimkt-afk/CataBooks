@@ -1206,3 +1206,212 @@ textarea:focus {
         pointer-events: auto;
     }
 }
+
+
+/* === DARK MODE TOGGLE IN SIDEBAR === */
+
+.dark-mode-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem;
+    border-top: 1px solid var(--border);
+    margin-top: auto;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background-color: #cbd5e1;
+    transition: 0.3s;
+    border-radius: 24px;
+}
+
+.toggle-slider::before {
+    content: '';
+    position: absolute;
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+    background-color: var(--primary-color);
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(20px);
+}
+
+
+/* === DARK MODE === */
+
+body.dark-mode {
+    --primary-color: #818cf8;
+    --primary-hover: #6366f1;
+    --secondary-color: #94a3b8;
+    --background: #0f172a;
+    --surface: #1e293b;
+    --text-main: #e2e8f0;
+    --text-muted: #94a3b8;
+    --border: #334155;
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4);
+    --wholesale-bg: #312e81;
+    --wholesale-text: #a5b4fc;
+    --retail-bg: #14532d;
+    --retail-text: #86efac;
+    --accent-blue: #60a5fa;
+    --accent-green: #34d399;
+    --accent-orange: #fbbf24;
+    --accent-red: #f87171;
+}
+
+body.dark-mode .sidebar {
+    background: #1e293b;
+    border-color: #334155;
+}
+
+body.dark-mode .brand span {
+    color: #e2e8f0;
+}
+
+body.dark-mode .nav-item {
+    color: #94a3b8;
+}
+
+body.dark-mode .nav-item:hover,
+body.dark-mode .nav-item.active {
+    background: #334155;
+    color: #e2e8f0;
+}
+
+body.dark-mode .main-content {
+    background: #0f172a;
+}
+
+body.dark-mode .top-bar {
+    background: #1e293b;
+    border-color: #334155;
+}
+
+body.dark-mode .search-container input {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-color: #475569;
+}
+
+body.dark-mode .chip {
+    background: #334155;
+    color: #94a3b8;
+    border-color: #475569;
+}
+
+body.dark-mode .chip.active {
+    background: var(--primary-color);
+    color: white;
+}
+
+body.dark-mode .material-card {
+    background: #1e293b;
+    border-color: #334155;
+}
+
+body.dark-mode .material-card:hover {
+    border-color: #818cf8;
+}
+
+body.dark-mode .material-card .title {
+    color: #e2e8f0;
+}
+
+body.dark-mode .cart-panel {
+    background: #1e293b;
+    border-color: #334155;
+}
+
+body.dark-mode .cart-panel .cart-header {
+    border-color: #334155;
+}
+
+body.dark-mode .cart-panel select {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-color: #475569;
+}
+
+body.dark-mode .cart-item {
+    border-color: #334155;
+}
+
+body.dark-mode .cart-footer {
+    border-color: #334155;
+}
+
+body.dark-mode .modal-content {
+    background: #1e293b;
+    color: #e2e8f0;
+}
+
+body.dark-mode .modal-content input,
+body.dark-mode .modal-content select,
+body.dark-mode .modal-content textarea {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-color: #475569;
+}
+
+body.dark-mode .results-header h2 {
+    color: #e2e8f0;
+}
+
+body.dark-mode .sort-dropdown select {
+    background: #1e293b;
+    color: #e2e8f0;
+    border-color: #475569;
+}
+
+body.dark-mode .btn-secondary {
+    background: #334155;
+    color: #e2e8f0;
+    border-color: #475569;
+}
+
+body.dark-mode .btn-secondary:hover {
+    background: #475569;
+}
+
+body.dark-mode .settings-section {
+    background: #0f172a;
+}
+
+body.dark-mode .settings-section h3 {
+    color: #e2e8f0;
+}
+
+body.dark-mode .dark-mode-toggle {
+    border-color: #334155;
+    color: #94a3b8;
+}
