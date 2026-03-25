@@ -258,11 +258,23 @@
             <div class="modal-header">
                 <h2><i class="fa-solid fa-sliders"></i> 設定</h2>
             </div>
-            <div class="modal-body settings-grid">
+            <div class="modal-body settings-grid" style="max-height: 65vh; overflow-y: auto;">
                 <!-- Section: Basic Info -->
                 <div class="settings-section">
                     <h3><i class="fa-solid fa-store"></i> 教室情報</h3>
                     <p class="section-desc">見積書・請求書のヘッダーに表示される情報です。</p>
+
+                    <div class="form-group">
+                        <label>教室ロゴ</label>
+                        <div style="margin-top: 0.5rem;">
+                            <img id="settingLogoPreview" src="" alt="" style="display: none; max-height: 60px; margin-bottom: 0.5rem; border: 1px solid var(--border); padding: 2px; border-radius: 4px;">
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <label for="settingLogoInput" class="btn-xs" style="cursor: pointer; padding: 0.4rem 0.8rem;">画像を選択...</label>
+                                <input type="file" id="settingLogoInput" accept="image/*" style="display: none;">
+                                <button type="button" class="btn-xs danger" id="settingDeleteLogoBtn" style="display: none;">削除</button>
+                            </div>
+                        </div>
+                    </div>
 
                     <div class="form-group">
                         <label>教室名 <span class="badge-required">必須</span></label>
@@ -271,12 +283,56 @@
 
                     <div class="form-group">
                         <label>郵便番号・住所</label>
-                        <input type="text" id="settingAddress" placeholder="例: 〒771-1220 徳島県板野郡藍住町...">
+                        <textarea id="settingAddress" rows="2" placeholder="例: 〒771-1220 徳島県板野郡藍住町...&#10;〇〇ビル 101"></textarea>
                     </div>
 
                     <div class="form-group">
                         <label>電話番号</label>
                         <input type="text" id="settingPhone" placeholder="例: 088-678-xxxx">
+                    </div>
+
+                    <div class="form-group">
+                        <label>登録番号 (インボイス)</label>
+                        <input type="text" id="settingRegNum" placeholder="例: T1234567890123">
+                    </div>
+                </div>
+
+                <!-- Section: Invoice / Payment -->
+                <div class="settings-section">
+                    <h3><i class="fa-solid fa-file-invoice-dollar"></i> 請求書設定</h3>
+                    <p class="section-desc">請求書PDF生成時に使用する設定です。</p>
+
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                            <input type="checkbox" id="settingUseHandlingFee" style="width: auto;">
+                            <span>事務手数料を請求する</span>
+                        </label>
+                    </div>
+                    <div class="form-group" id="settingFeeAmountGroup" style="display: none; padding-left: 1.5rem;">
+                        <label>手数料 (税込)</label>
+                        <input type="number" id="settingHandlingFeeAmount" placeholder="例: 550" value="0">
+                    </div>
+
+                    <div class="form-group">
+                        <label>回収方法</label>
+                        <div style="display: flex; gap: 1rem; margin-top: 0.5rem;">
+                            <label style="font-weight: normal; display: flex; align-items: center; gap: 0.3rem;">
+                                <input type="radio" name="settingPaymentMethod" value="bank" checked style="width: auto;"> 銀行振込
+                            </label>
+                            <label style="font-weight: normal; display: flex; align-items: center; gap: 0.3rem;">
+                                <input type="radio" name="settingPaymentMethod" value="debit" style="width: auto;"> 引き落とし
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="settingBankInfoGroup">
+                        <label id="settingDeadlineLabel">振込期限</label>
+                        <input type="date" id="settingPaymentDeadline">
+                    </div>
+
+                    <div class="form-group" id="settingBankDetailsGroup">
+                        <label>振込先口座情報</label>
+                        <textarea id="settingBankDetails" rows="3" placeholder="例: 〇〇銀行 ××支店&#10;普通 1234567&#10;カ）サンプル"></textarea>
                     </div>
                 </div>
 
@@ -442,8 +498,68 @@
         </div>
     </div>
 
+    <!-- Hidden Invoice Template for PDF Generation -->
+    <div id="invoice-template-container" style="position: absolute; left: -9999px; top: 0;">
+        <div id="invoice-template" class="invoice-a4">
+            <h1 class="invoice-title">御請求書</h1>
+
+            <div class="invoice-header">
+                <div class="recipient-col">
+                    <h2 id="pdf-recipient-name" class="recipient-name"></h2>
+                    <p class="verification-text">下記の通りご請求申し上げます。</p>
+                </div>
+                <div class="sender-col">
+                    <div id="pdf-logo-container" style="margin-bottom: 15px; display: none;">
+                        <img id="pdf-logo-img" src="" alt="" style="max-height: 90px; max-width: 100%;">
+                    </div>
+                    <p id="pdf-date" class="text-right"></p>
+                    <p id="pdf-sender-name" class="font-bold"></p>
+                    <p id="pdf-sender-address"></p>
+                    <p id="pdf-sender-phone"></p>
+                    <p id="pdf-sender-reg" class="reg-num"></p>
+                </div>
+            </div>
+
+            <div class="invoice-summary">
+                <div class="total-amount-box">
+                    <span>ご請求金額</span>
+                    <span class="currency">¥</span>
+                    <span id="pdf-total-amount">0</span>
+                    <span class="tax-note">(税込)</span>
+                </div>
+            </div>
+
+            <table class="invoice-table">
+                <thead>
+                    <tr>
+                        <th style="width: 45%;">品目</th>
+                        <th style="width: 20%;">単価 (税込)</th>
+                        <th style="width: 10%;">数量</th>
+                        <th style="width: 25%;">金額 (税込)</th>
+                    </tr>
+                </thead>
+                <tbody id="pdf-table-body">
+                    <!-- Rows will be injected here -->
+                </tbody>
+            </table>
+
+            <div class="invoice-footer">
+                <div class="bank-info" id="pdf-bank-info">
+                </div>
+                <div class="totals-breakdown">
+                    <div class="row">
+                        <span>小計 (税込)</span>
+                        <span id="pdf-subtotal">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="supabase-client.js"></script>
     <script src="script.js"></script>
 </body>

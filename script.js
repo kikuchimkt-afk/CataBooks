@@ -43,7 +43,13 @@ let currentState = {
         schoolName: 'ECCベストワン藍住・北島中央',
         taxRate: 0.10,
         address: '',
-        phone: ''
+        phone: '',
+        regNum: '',
+        bankDetails: '',
+        useHandlingFee: false,
+        handlingFeeAmount: 0,
+        paymentMethod: 'bank',
+        paymentDeadline: ''
     },
     viewMode: 'search',
 
@@ -173,6 +179,12 @@ async function loadAllData() {
         if (settings.taxRate !== undefined) currentState.settings.taxRate = settings.taxRate;
         if (settings.address) currentState.settings.address = settings.address;
         if (settings.phone) currentState.settings.phone = settings.phone;
+        if (settings.regNum) currentState.settings.regNum = settings.regNum;
+        if (settings.bankDetails) currentState.settings.bankDetails = settings.bankDetails;
+        if (settings.useHandlingFee !== undefined) currentState.settings.useHandlingFee = settings.useHandlingFee;
+        if (settings.handlingFeeAmount !== undefined) currentState.settings.handlingFeeAmount = settings.handlingFeeAmount;
+        if (settings.paymentMethod) currentState.settings.paymentMethod = settings.paymentMethod;
+        if (settings.paymentDeadline) currentState.settings.paymentDeadline = settings.paymentDeadline;
 
     } catch (e) {
         console.error('[App] Failed to load data:', e);
@@ -373,6 +385,66 @@ function setupEventListeners() {
     if (copyCartBtn) copyCartBtn.addEventListener('click', copyCartToStudent);
     const saveOrderBtn = document.getElementById('saveOrderBtn');
     if (saveOrderBtn) saveOrderBtn.addEventListener('click', saveOrderHistory);
+
+    // Settings: Logo handling
+    const settingLogoInput = document.getElementById('settingLogoInput');
+    const settingLogoPreview = document.getElementById('settingLogoPreview');
+    const settingDeleteLogoBtn = document.getElementById('settingDeleteLogoBtn');
+
+    if (settingLogoInput) {
+        // Restore logo on load
+        const savedLogo = localStorage.getItem('invoiceLogo');
+        if (savedLogo && settingLogoPreview) {
+            settingLogoPreview.src = savedLogo;
+            settingLogoPreview.style.display = 'block';
+            if (settingDeleteLogoBtn) settingDeleteLogoBtn.style.display = 'inline-block';
+        }
+        settingLogoInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            if (file.size > 1024 * 1024) { alert('画像サイズが大きすぎます（1MB以下推奨）。'); return; }
+            const reader = new FileReader();
+            reader.onload = function (evt) {
+                localStorage.setItem('invoiceLogo', evt.target.result);
+                if (settingLogoPreview) { settingLogoPreview.src = evt.target.result; settingLogoPreview.style.display = 'block'; }
+                if (settingDeleteLogoBtn) settingDeleteLogoBtn.style.display = 'inline-block';
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+    if (settingDeleteLogoBtn) {
+        settingDeleteLogoBtn.addEventListener('click', () => {
+            localStorage.removeItem('invoiceLogo');
+            if (settingLogoPreview) { settingLogoPreview.src = ''; settingLogoPreview.style.display = 'none'; }
+            settingDeleteLogoBtn.style.display = 'none';
+            if (settingLogoInput) settingLogoInput.value = '';
+        });
+    }
+
+    // Settings: Handling fee toggle
+    const settingUseFee = document.getElementById('settingUseHandlingFee');
+    const settingFeeGroup = document.getElementById('settingFeeAmountGroup');
+    if (settingUseFee && settingFeeGroup) {
+        settingUseFee.addEventListener('change', () => {
+            settingFeeGroup.style.display = settingUseFee.checked ? 'block' : 'none';
+        });
+    }
+
+    // Settings: Payment method toggle
+    const settingPaymentRadios = document.getElementsByName('settingPaymentMethod');
+    const settingBankDetailsGroup = document.getElementById('settingBankDetailsGroup');
+    const settingDeadlineLabel = document.getElementById('settingDeadlineLabel');
+    for (const radio of settingPaymentRadios) {
+        radio.addEventListener('change', (e) => {
+            if (e.target.value === 'bank') {
+                if (settingBankDetailsGroup) settingBankDetailsGroup.style.display = 'block';
+                if (settingDeadlineLabel) settingDeadlineLabel.textContent = '振込期限';
+            } else {
+                if (settingBankDetailsGroup) settingBankDetailsGroup.style.display = 'none';
+                if (settingDeadlineLabel) settingDeadlineLabel.textContent = '引き落とし日';
+            }
+        });
+    }
 }
 
 
@@ -412,6 +484,30 @@ function openSettings() {
     document.getElementById('settingAddress').value = currentState.settings.address || '';
     document.getElementById('settingPhone').value = currentState.settings.phone || '';
     document.getElementById('settingTaxRate').value = currentState.settings.taxRate || 0.10;
+    document.getElementById('settingRegNum').value = currentState.settings.regNum || '';
+    document.getElementById('settingBankDetails').value = currentState.settings.bankDetails || '';
+    document.getElementById('settingHandlingFeeAmount').value = currentState.settings.handlingFeeAmount || 0;
+    document.getElementById('settingPaymentDeadline').value = currentState.settings.paymentDeadline || '';
+
+    const useFee = document.getElementById('settingUseHandlingFee');
+    const feeGroup = document.getElementById('settingFeeAmountGroup');
+    useFee.checked = currentState.settings.useHandlingFee || false;
+    feeGroup.style.display = useFee.checked ? 'block' : 'none';
+
+    // Restore payment method radio
+    const method = currentState.settings.paymentMethod || 'bank';
+    const radios = document.getElementsByName('settingPaymentMethod');
+    for (const r of radios) { r.checked = (r.value === method); }
+    const bankDetailsGroup = document.getElementById('settingBankDetailsGroup');
+    const deadlineLabel = document.getElementById('settingDeadlineLabel');
+    if (method === 'bank') {
+        if (bankDetailsGroup) bankDetailsGroup.style.display = 'block';
+        if (deadlineLabel) deadlineLabel.textContent = '振込期限';
+    } else {
+        if (bankDetailsGroup) bankDetailsGroup.style.display = 'none';
+        if (deadlineLabel) deadlineLabel.textContent = '引き落とし日';
+    }
+
     document.getElementById('settingsModal').classList.add('active');
 }
 
@@ -420,11 +516,24 @@ async function saveSettingsHandler() {
     currentState.settings.address = document.getElementById('settingAddress').value;
     currentState.settings.phone = document.getElementById('settingPhone').value;
     currentState.settings.taxRate = parseFloat(document.getElementById('settingTaxRate').value);
+    currentState.settings.regNum = document.getElementById('settingRegNum').value;
+    currentState.settings.bankDetails = document.getElementById('settingBankDetails').value;
+    currentState.settings.handlingFeeAmount = parseInt(document.getElementById('settingHandlingFeeAmount').value) || 0;
+    currentState.settings.useHandlingFee = document.getElementById('settingUseHandlingFee').checked;
+    currentState.settings.paymentDeadline = document.getElementById('settingPaymentDeadline').value;
+    const selectedMethod = document.querySelector('input[name="settingPaymentMethod"]:checked');
+    currentState.settings.paymentMethod = selectedMethod ? selectedMethod.value : 'bank';
 
     await saveSetting('schoolName', currentState.settings.schoolName);
     await saveSetting('address', currentState.settings.address);
     await saveSetting('phone', currentState.settings.phone);
     await saveSetting('taxRate', currentState.settings.taxRate);
+    await saveSetting('regNum', currentState.settings.regNum);
+    await saveSetting('bankDetails', currentState.settings.bankDetails);
+    await saveSetting('useHandlingFee', currentState.settings.useHandlingFee);
+    await saveSetting('handlingFeeAmount', currentState.settings.handlingFeeAmount);
+    await saveSetting('paymentMethod', currentState.settings.paymentMethod);
+    await saveSetting('paymentDeadline', currentState.settings.paymentDeadline);
 
     document.getElementById('settingsModal').classList.remove('active');
     alert('設定を保存しました');
@@ -1488,4 +1597,161 @@ async function saveOrderHistory() {
         `${student.name}様 | ¥${total.toLocaleString()} | ${currentState.currentCart.length}点 (${items})`
     );
     alert(`注文履歴を保存しました\n${student.name}様: ${currentState.currentCart.length}点 ¥${total.toLocaleString()}`);
+}
+
+
+// === INVOICE / QUOTE PDF GENERATION ===
+
+async function handleCreateQuote() {
+    if (!currentState.currentStudentId || currentState.currentCart.length === 0) {
+        alert('生徒を選択し、カートに教材を追加してください');
+        return;
+    }
+
+    const student = currentState.students.find(s => s.id === currentState.currentStudentId);
+    if (!student) return;
+
+    const settings = currentState.settings;
+    const cartItems = currentState.currentCart;
+
+    try {
+        // --- Populate the hidden invoice template ---
+        const template = document.getElementById('invoice-template');
+        const q = (sel) => template.querySelector(sel);
+
+        // Logo
+        const savedLogo = localStorage.getItem('invoiceLogo');
+        const logoContainer = q('#pdf-logo-container');
+        const logoImg = q('#pdf-logo-img');
+        if (savedLogo && logoContainer && logoImg) {
+            logoImg.src = savedLogo;
+            logoContainer.style.display = 'block';
+        } else if (logoContainer) {
+            logoContainer.style.display = 'none';
+        }
+
+        // Sender info
+        q('#pdf-sender-name').textContent = settings.schoolName || '';
+        const addrVal = settings.address || '';
+        q('#pdf-sender-address').innerHTML = addrVal.replace(/\n/g, '<br>');
+        q('#pdf-sender-phone').textContent = settings.phone ? 'TEL: ' + settings.phone : '';
+        q('#pdf-sender-reg').textContent = settings.regNum ? '登録番号: ' + settings.regNum : '';
+
+        // Date
+        const now = new Date();
+        q('#pdf-date').textContent = now.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' });
+
+        // Recipient (様 / 御中 auto-detection)
+        let title = '様';
+        const recipientName = student.name;
+        if (recipientName.includes('株式会社') || recipientName.includes('有限会社') || recipientName.includes('合同会社')) {
+            title = '御中';
+        }
+        q('#pdf-recipient-name').textContent = `${recipientName} ${title}`;
+
+        // Table items
+        const tbody = q('#pdf-table-body');
+        tbody.innerHTML = '';
+        let subtotal = 0;
+
+        cartItems.forEach(item => {
+            const price = parseInt(item.price_retail) || 0;
+            subtotal += price;
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${item.title}</td>
+                <td>¥${price.toLocaleString()}</td>
+                <td>1</td>
+                <td>¥${price.toLocaleString()}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        // Handling fee
+        if (settings.useHandlingFee && settings.handlingFeeAmount > 0) {
+            subtotal += settings.handlingFeeAmount;
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>事務手数料</td>
+                <td>¥${settings.handlingFeeAmount.toLocaleString()}</td>
+                <td>1</td>
+                <td>¥${settings.handlingFeeAmount.toLocaleString()}</td>
+            `;
+            tbody.appendChild(tr);
+        }
+
+        q('#pdf-subtotal').textContent = '¥' + subtotal.toLocaleString();
+        q('#pdf-total-amount').textContent = subtotal.toLocaleString();
+
+        // Payment / Bank info footer
+        const bankInfoContainer = q('#pdf-bank-info');
+        const method = settings.paymentMethod || 'bank';
+        let deadlineStr = '';
+        if (settings.paymentDeadline) {
+            const d = new Date(settings.paymentDeadline);
+            deadlineStr = `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+        }
+
+        if (method === 'bank') {
+            const bankText = settings.bankDetails || '';
+            let content = `<strong>【お振込先】</strong><br>${bankText.replace(/\n/g, '<br>')}`;
+            if (deadlineStr) {
+                content += `<br><br><strong>お振込み期限：${deadlineStr}</strong>`;
+            }
+            bankInfoContainer.innerHTML = content;
+        } else {
+            let content = `<strong>【お支払い方法】</strong><br>ご登録いただいた口座より自動引き落としとなります。<br>`;
+            if (deadlineStr) {
+                content += `<strong>お引き落とし日：${deadlineStr}</strong><br>`;
+            }
+            bankInfoContainer.innerHTML = content;
+        }
+
+        // --- Generate PDF with html2canvas + jsPDF ---
+        // Move template visible briefly for rendering
+        const container = document.getElementById('invoice-template-container');
+        container.style.position = 'fixed';
+        container.style.left = '0';
+        container.style.top = '0';
+        container.style.zIndex = '-9999';
+        container.style.opacity = '0';
+        container.style.pointerEvents = 'none';
+        container.style.width = '210mm';
+
+        await document.fonts.ready;
+        await new Promise(r => setTimeout(r, 300));
+
+        const canvas = await html2canvas(template, {
+            scale: 1.5,
+            useCORS: true,
+            logging: false,
+            windowWidth: 794,
+            backgroundColor: '#FFFFFF'
+        });
+
+        // Reset container position
+        container.style.position = 'absolute';
+        container.style.left = '-9999px';
+
+        const { jsPDF } = window.jspdf;
+        const pdf = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
+
+        const imgWidth = 210;
+        const imgHeight = (canvas.height * imgWidth) / canvas.width;
+        const imgData = canvas.toDataURL('image/jpeg', 0.85);
+        pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
+
+        // Generate filename
+        const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+        const fileName = `請求書_${student.name}_${dateStr}.pdf`;
+        pdf.save(fileName);
+
+        await addHistoryRecord('請求書作成',
+            `${student.name}様 | ¥${subtotal.toLocaleString()} | ${cartItems.length}点`
+        );
+
+    } catch (err) {
+        console.error('PDF generation error:', err);
+        alert('請求書の生成に失敗しました: ' + err.message);
+    }
 }
