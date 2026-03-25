@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>データ移行ツール</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Noto Sans JP', sans-serif;
+            background: #0f172a;
+            color: #e2e8f0;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .container {
+            background: #1e293b;
+            border-radius: 16px;
+            padding: 2rem;
+            max-width: 600px;
+            width: 90%;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #818cf8, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .subtitle { color: #94a3b8; margin-bottom: 2rem; font-size: 0.9rem; }
+        .step {
+            background: #334155;
+            border-radius: 12px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+        }
+        .step-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+        .step-num {
+            width: 28px; height: 28px;
+            background: #4f46e5;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.85rem; font-weight: 700;
+        }
+        .step-title { font-weight: 600; font-size: 1rem; }
+        .step-desc { font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.75rem; }
+        button {
+            padding: 0.6rem 1.5rem;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+        }
+        .btn-primary {
+            background: #4f46e5;
+            color: white;
+        }
+        .btn-primary:hover { background: #4338ca; transform: translateY(-1px); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn-danger:hover { background: #dc2626; }
+        .progress {
+            background: #475569;
+            border-radius: 999px;
+            height: 8px;
+            overflow: hidden;
+            margin-top: 0.75rem;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #4f46e5, #818cf8);
+            border-radius: 999px;
+            transition: width 0.3s;
+            width: 0%;
+        }
+        .log {
+            background: #0f172a;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+            font-family: monospace;
+            font-size: 0.8rem;
+            max-height: 200px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            color: #94a3b8;
+        }
+        .log .success { color: #34d399; }
+        .log .error { color: #f87171; }
+        .log .info { color: #60a5fa; }
+        .warning-box {
+            background: #451a03;
+            border: 1px solid #92400e;
+            border-radius: 8px;
+            padding: 0.75rem;
+            margin-top: 1rem;
+            font-size: 0.85rem;
+            color: #fbbf24;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>📦 データ移行ツール</h1>
+        <p class="subtitle">database.js の教材データを Supabase に移行します</p>
+
+        <div class="step">
+            <div class="step-header">
+                <div class="step-num">1</div>
+                <div class="step-title">接続テスト</div>
+            </div>
+            <p class="step-desc">Supabaseへの接続を確認します。先に supabase-client.js のURL/Keyを設定してください。</p>
+            <button class="btn-primary" id="btnTestConnection" onclick="testConnection()">接続テスト</button>
+            <div id="connectionResult" style="margin-top: 0.5rem; font-size: 0.85rem;"></div>
+        </div>
+
+        <div class="step">
+            <div class="step-header">
+                <div class="step-num">2</div>
+                <div class="step-title">テーブル作成</div>
+            </div>
+            <p class="step-desc">以下のSQLをSupabaseダッシュボードのSQL Editorで実行してください。</p>
+            <button class="btn-primary" onclick="showSQL()">SQLを表示</button>
+            <div id="sqlDisplay" style="display:none; margin-top: 0.75rem;">
+                <textarea id="sqlArea" readonly style="width:100%; height:300px; background:#0f172a; color:#e2e8f0; border:1px solid #475569; border-radius:8px; padding:0.75rem; font-family:monospace; font-size:0.75rem; resize:vertical;"></textarea>
+                <button style="margin-top: 0.5rem; background: #475569; color: white; font-size: 0.8rem;" onclick="copySQL()">📋 コピー</button>
+            </div>
+        </div>
+
+        <div class="step">
+            <div class="step-header">
+                <div class="step-num">3</div>
+                <div class="step-title">教材データ移行</div>
+            </div>
+            <p class="step-desc">database.js の全教材データ (<span id="materialCount">0</span> 件) を Supabase に投入します。</p>
+            <button class="btn-primary" id="btnMigrate" onclick="migrateMaterials()">移行開始</button>
+            <div class="progress" id="progressBar" style="display: none;">
+                <div class="progress-bar" id="progressInner"></div>
+            </div>
+            <div class="log" id="log" style="display:none;"></div>
+        </div>
+
+        <div class="step">
+            <div class="step-header">
+                <div class="step-num">4</div>
+                <div class="step-title">既存生徒データの移行 (任意)</div>
+            </div>
+            <p class="step-desc">LocalStorageに保存されている生徒・カートデータがあれば移行します。</p>
+            <button class="btn-primary" id="btnMigrateStudents" onclick="migrateStudents()">生徒データ移行</button>
+            <div id="studentResult" style="margin-top: 0.5rem; font-size: 0.85rem;"></div>
+        </div>
+
+        <div class="step">
+            <div class="step-header">
+                <div class="step-num">5</div>
+                <div class="step-title">初期設定の投入</div>
+            </div>
+            <p class="step-desc">教室名などの初期設定をDBに保存します。</p>
+            <button class="btn-primary" onclick="migrateSettings()">設定を移行</button>
+            <div id="settingsResult" style="margin-top: 0.5rem; font-size: 0.85rem;"></div>
+        </div>
+
+        <div class="warning-box">
+            ⚠️ このページは一度だけ実行すればOKです。移行完了後はこのファイルを削除しても構いません。
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="database.js"></script>
+    <script src="supabase-client.js"></script>
+    <script>
+        // Init
+        initSupabase();
+        document.getElementById('materialCount').textContent =
+            (typeof DB_DATA !== 'undefined') ? DB_DATA.length : 0;
+
+        const SQL_SCHEMA = `-- 教材マスターテーブル
+CREATE TABLE IF NOT EXISTS materials (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  price_wholesale INTEGER DEFAULT 0,
+  price_retail INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 生徒テーブル
+CREATE TABLE IF NOT EXISTS students (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  grade TEXT DEFAULT '',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- カートテーブル
+CREATE TABLE IF NOT EXISTS cart_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  student_id UUID REFERENCES students(id) ON DELETE CASCADE,
+  material_id TEXT REFERENCES materials(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(student_id, material_id)
+);
+
+-- お気に入り
+CREATE TABLE IF NOT EXISTS favorites (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  material_id TEXT REFERENCES materials(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(material_id)
+);
+
+-- 設定
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL
+);
+
+-- 履歴
+CREATE TABLE IF NOT EXISTS history (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  type TEXT NOT NULL,
+  detail TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- RLS無効化 (教室内利用のため)
+ALTER TABLE materials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE students ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cart_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE favorites ENABLE ROW LEVEL SECURITY;
+ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE history ENABLE ROW LEVEL SECURITY;
+
+-- 全ユーザーにアクセスを許可するポリシー
+CREATE POLICY "Allow all access to materials" ON materials FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all access to students" ON students FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all access to cart_items" ON cart_items FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all access to favorites" ON favorites FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all access to settings" ON settings FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all access to history" ON history FOR ALL USING (true) WITH CHECK (true);
+
+-- Realtime有効化
+ALTER PUBLICATION supabase_realtime ADD TABLE materials;
+ALTER PUBLICATION supabase_realtime ADD TABLE students;
+ALTER PUBLICATION supabase_realtime ADD TABLE cart_items;`;
+
+        function showSQL() {
+            const d = document.getElementById('sqlDisplay');
+            d.style.display = d.style.display === 'none' ? 'block' : 'none';
+            document.getElementById('sqlArea').value = SQL_SCHEMA;
+        }
+
+        function copySQL() {
+            const ta = document.getElementById('sqlArea');
+            ta.select();
+            document.execCommand('copy');
+            alert('SQLをコピーしました');
+        }
+
+        async function testConnection() {
+            const result = document.getElementById('connectionResult');
+            try {
+                const { data, error } = await supabase.from('materials').select('id').limit(1);
+                if (error) throw error;
+                result.innerHTML = '<span style="color:#34d399;">✅ 接続成功！テーブルにアクセスできました。</span>';
+            } catch (e) {
+                result.innerHTML = `<span style="color:#f87171;">❌ エラー: ${e.message || e}</span>`;
+            }
+        }
+
+        function log(msg, type = '') {
+            const el = document.getElementById('log');
+            el.style.display = 'block';
+            el.innerHTML += `<span class="${type}">${msg}</span>\n`;
+            el.scrollTop = el.scrollHeight;
+        }
+
+        async function migrateMaterials() {
+            if (typeof DB_DATA === 'undefined' || DB_DATA.length === 0) {
+                alert('database.js にデータがありません');
+                return;
+            }
+            const btn = document.getElementById('btnMigrate');
+            btn.disabled = true;
+            btn.textContent = '移行中...';
+            document.getElementById('progressBar').style.display = 'block';
+
+            const total = DB_DATA.length;
+            log(`教材データ ${total} 件の移行を開始します...`, 'info');
+
+            const CHUNK = 500;
+            let done = 0;
+
+            for (let i = 0; i < total; i += CHUNK) {
+                const chunk = DB_DATA.slice(i, i + CHUNK).map(m => ({
+                    id: m.id,
+                    title: m.title,
+                    price_wholesale: parseInt(m.price_wholesale) || 0,
+                    price_retail: parseInt(m.price_retail) || 0
+                }));
+
+                const { error } = await supabase
+                    .from('materials')
+                    .upsert(chunk, { onConflict: 'id' });
+
+                if (error) {
+                    log(`チャンク ${i}-${i + chunk.length}: エラー - ${error.message}`, 'error');
+                } else {
+                    done += chunk.length;
+                    log(`${done} / ${total} 件完了`, 'success');
+                }
+
+                const pct = Math.min(100, Math.round((done / total) * 100));
+                document.getElementById('progressInner').style.width = pct + '%';
+            }
+
+            log(`\n✅ 移行完了: ${done} / ${total} 件`, 'success');
+            btn.textContent = '完了！';
+        }
+
+        async function migrateStudents() {
+            const result = document.getElementById('studentResult');
+            const saved = localStorage.getItem('materio_db_state');
+            if (!saved) {
+                result.innerHTML = '<span style="color:#fbbf24;">LocalStorageにデータがありません</span>';
+                return;
+            }
+            try {
+                const state = JSON.parse(saved);
+                if (!state.students || state.students.length === 0) {
+                    result.innerHTML = '<span style="color:#fbbf24;">生徒データがありません</span>';
+                    return;
+                }
+
+                let count = 0;
+                for (const s of state.students) {
+                    const { data, error } = await supabase
+                        .from('students')
+                        .insert([{ name: s.name, grade: s.grade || '' }])
+                        .select();
+                    
+                    if (error) {
+                        console.error('Student insert error:', error);
+                        continue;
+                    }
+
+                    // Migrate cart items
+                    if (s.cart && s.cart.length > 0 && data && data[0]) {
+                        const cartRecords = s.cart.map(item => ({
+                            student_id: data[0].id,
+                            material_id: item.id
+                        }));
+                        await supabase.from('cart_items').insert(cartRecords);
+                    }
+                    count++;
+                }
+                result.innerHTML = `<span style="color:#34d399;">✅ ${count} 名の生徒データを移行しました</span>`;
+            } catch (e) {
+                result.innerHTML = `<span style="color:#f87171;">❌ エラー: ${e.message}</span>`;
+            }
+        }
+
+        async function migrateSettings() {
+            const result = document.getElementById('settingsResult');
+            try {
+                const saved = localStorage.getItem('materio_db_state');
+                let settings = {
+                    schoolName: 'ECCベストワン藍住・北島中央',
+                    taxRate: 0.10,
+                    address: '',
+                    phone: ''
+                };
+                if (saved) {
+                    const state = JSON.parse(saved);
+                    if (state.settings) settings = { ...settings, ...state.settings };
+                }
+
+                await saveSetting('schoolName', settings.schoolName);
+                await saveSetting('taxRate', settings.taxRate);
+                await saveSetting('address', settings.address || '');
+                await saveSetting('phone', settings.phone || '');
+
+                // Migrate favorites
+                if (saved) {
+                    const state = JSON.parse(saved);
+                    if (state.favorites && state.favorites.length > 0) {
+                        for (const fid of state.favorites) {
+                            await addFavorite(fid);
+                        }
+                        result.innerHTML = `<span style="color:#34d399;">✅ 設定 + お気に入り ${state.favorites.length}件 を移行しました</span>`;
+                        return;
+                    }
+                }
+                result.innerHTML = '<span style="color:#34d399;">✅ 設定を保存しました</span>';
+            } catch (e) {
+                result.innerHTML = `<span style="color:#f87171;">❌ エラー: ${e.message}</span>`;
+            }
+        }
+    </script>
+</body>
+</html>

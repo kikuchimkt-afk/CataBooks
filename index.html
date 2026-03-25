@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CataBooks - 教材データベース</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Roboto:wght@400;500;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        (function () {
+            var ua = navigator.userAgent.toLowerCase();
+            if (/iphone|android|ipod/.test(ua) && !window.location.search.includes('mode=desktop')) {
+                window.location.href = 'mobile.html';
+            }
+        })();
+    </script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Mobile Header -->
+        <header class="mobile-header">
+            <button class="mobile-menu-btn" id="mobileMenuBtn">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <div class="mobile-brand">
+                <i class="fa-solid fa-book-open-reader"></i> CataBooks
+            </div>
+            <button class="mobile-cart-btn" id="mobileCartBtn">
+                <i class="fa-solid fa-basket-shopping"></i>
+                <span class="mobile-cart-badge" id="mobileCartBadge" style="display:none">0</span>
+            </button>
+        </header>
+
+        <!-- Drawer Overlay -->
+        <div class="drawer-overlay" id="drawerOverlay"></div>
+
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="brand">
+                <i class="fa-solid fa-book-open-reader"></i>
+                <span>CataBooks</span>
+            </div>
+
+            <nav class="nav-menu">
+                <div class="nav-item active" id="navSearch">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <span>検索</span>
+                </div>
+                <div class="nav-item" id="navFavorites">
+                    <i class="fa-solid fa-star"></i>
+                    <span>お気に入り</span>
+                </div>
+                <div class="nav-item" id="navHistory">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                    <span>履歴</span>
+                </div>
+                <div class="nav-item" id="navMaterials">
+                    <i class="fa-solid fa-book"></i>
+                    <span>教材管理</span>
+                </div>
+                <div class="nav-item" id="navSettings">
+                    <i class="fa-solid fa-gear"></i>
+                    <span>設定</span>
+                </div>
+            </nav>
+
+
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-bar">
+                <div class="search-container">
+                    <i class="fa-solid fa-search search-icon"></i>
+                    <input type="text" id="searchInput" placeholder="教材名、キーワードで検索..." autocomplete="off">
+                </div>
+
+            </header>
+
+            <section class="filters-section">
+                <div class="filter-group">
+                    <label>校種別</label>
+                    <div class="chip-container" id="levelFilters">
+                        <button class="chip active" data-filter="all">すべて</button>
+                        <button class="chip" data-filter="elementary">小学生</button>
+                        <button class="chip" data-filter="junior">中学生</button>
+                        <button class="chip" data-filter="high">高校生</button>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>教科</label>
+                    <div class="chip-container" id="subjectFilters">
+                        <button class="chip active" data-filter="all">すべて</button>
+                        <button class="chip" data-filter="english">英語</button>
+                        <button class="chip" data-filter="math">数学/算数</button>
+                        <button class="chip" data-filter="japanese">国語</button>
+                        <button class="chip" data-filter="science">理科</button>
+                        <button class="chip" data-filter="social">社会</button>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>カテゴリ</label>
+                    <div class="chip-container" id="specialFilters">
+                        <button class="chip active" data-filter="all">すべて</button>
+                        <button class="chip" data-filter="eiken">英検</button>
+                        <button class="chip" data-filter="exam">受験対策</button>
+                        <button class="chip" data-filter="season">季節講習</button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="results-header">
+                <h2 id="resultsCount">検索結果: <span class="count-animate">0</span> 件</h2>
+                <div class="sort-dropdown">
+                    <span>並び替え:</span>
+                    <select id="sortSelect">
+                        <option value="relevance">関連度順</option>
+                        <option value="price-asc">価格（安）</option>
+                        <option value="price-desc">価格（高）</option>
+                    </select>
+                </div>
+            </section>
+
+            <div class="materials-grid" id="materialsGrid">
+                <!-- Cards will be injected by JS -->
+            </div>
+        </main>
+
+        <!-- Right Sidebar: Cart & Student Management -->
+        <aside class="cart-panel">
+            <div class="cart-header">
+                <div class="student-selector">
+                    <div class="selector-header">
+                        <label>対象生徒</label>
+                        <div class="student-actions">
+                            <button class="btn-xs" id="importStudentBtn" title="Excel一括登録"><i
+                                    class="fa-solid fa-file-import"></i></button>
+                            <button class="btn-xs danger" id="deleteAllStudentsBtn" title="全生徒のカートを空にする"><i
+                                    class="fa-solid fa-trash-can"></i></button>
+                        </div>
+                    </div>
+                    <div class="selector-row">
+                        <select id="studentSelect">
+                            <option value="">生徒を選択...</option>
+                        </select>
+                        <button class="btn-icon" id="addStudentBtn" title="新規生徒追加"><i
+                                class="fa-solid fa-user-plus"></i></button>
+                        <button class="btn-icon danger-icon" id="deleteStudentBtn" title="表示中の生徒を削除"
+                            style="background: #fee2e2; color: #ef4444; margin-left: 5px;"><i
+                                class="fa-solid fa-user-xmark"></i></button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="cart-content">
+                <div class="cart-empty-state" id="cartEmptyState">
+                    <i class="fa-solid fa-basket-shopping"></i>
+                    <p>生徒を選択して<br>教材を追加してください</p>
+                </div>
+                <div class="cart-items-list" id="cartItemsList">
+                    <!-- Cart items will be injected here -->
+                </div>
+            </div>
+
+            <div class="cart-footer">
+                <div class="cart-summary">
+                    <div class="summary-row">
+                        <span>小計 (仕入)</span>
+                        <span id="cartTotalWholesale">¥0</span>
+                    </div>
+                    <div class="summary-row retail">
+                        <span>合計 (販売)</span>
+                        <span class="total-price" id="cartTotalRetail">¥0</span>
+                    </div>
+                </div>
+                <div class="cart-buttons">
+                    <button class="btn-secondary full-width" id="createQuoteBtn" disabled>
+                        <i class="fa-solid fa-file-invoice-dollar"></i> 見積書作成
+                    </button>
+                    <div class="export-group" style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
+                        <button class="btn-primary" id="exportStudentListBtn" disabled
+                            style="flex: 1; font-size: 0.85rem; padding: 0.5rem;">
+                            <i class="fa-solid fa-file-excel"></i> 全生徒リスト
+                        </button>
+                        <button class="btn-primary" id="exportOrderSheetBtn" disabled
+                            style="flex: 1; font-size: 0.85rem; padding: 0.5rem;">
+                            <i class="fa-solid fa-cart-flatbed"></i> 発注用集計
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Modal for Settings -->
+    <!-- Modal for Settings -->
+    <div class="modal-overlay" id="settingsModal">
+        <div class="modal-content medium-modal">
+            <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+            <div class="modal-header">
+                <h2><i class="fa-solid fa-sliders"></i> 設定</h2>
+            </div>
+            <div class="modal-body settings-grid">
+                <!-- Section: Basic Info -->
+                <div class="settings-section">
+                    <h3><i class="fa-solid fa-store"></i> 教室情報</h3>
+                    <p class="section-desc">見積書・請求書のヘッダーに表示される情報です。</p>
+
+                    <div class="form-group">
+                        <label>教室名 <span class="badge-required">必須</span></label>
+                        <input type="text" id="settingSchoolName" placeholder="例: ECCベストワン藍住・北島中央">
+                    </div>
+
+                    <div class="form-group">
+                        <label>郵便番号・住所</label>
+                        <input type="text" id="settingAddress" placeholder="例: 〒771-1220 徳島県板野郡藍住町...">
+                    </div>
+
+                    <div class="form-group">
+                        <label>電話番号</label>
+                        <input type="text" id="settingPhone" placeholder="例: 088-678-xxxx">
+                    </div>
+                </div>
+
+                <!-- Section: System -->
+                <div class="settings-section">
+                    <h3><i class="fa-solid fa-calculator"></i> システム設定</h3>
+                    <div class="form-group">
+                        <label>消費税率</label>
+                        <div class="input-with-unit">
+                            <input type="number" id="settingTaxRate" placeholder="0.10" step="0.01" value="0.10">
+                            <span>% (標準: 0.10)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section: Danger Zone -->
+                <div class="settings-section danger-zone">
+                    <h3><i class="fa-solid fa-triangle-exclamation"></i> データ管理</h3>
+                    <div class="danger-actions">
+                        <div class="danger-item">
+                            <div class="danger-info">
+                                <strong>全生徒データを削除</strong>
+                                <p>登録された生徒、カートの中身、履歴を全て削除します。</p>
+                            </div>
+                            <button class="btn-danger-outline" id="btnDeleteAllStudents">
+                                生徒全削除
+                            </button>
+                        </div>
+                        <div class="danger-item">
+                            <div class="danger-info">
+                                <strong>全データを初期化</strong>
+                                <p>アプリケーションを初期状態に戻します。全ての設定、お気に入り、履歴が削除されます。</p>
+                            </div>
+                            <button class="btn-danger-fill" id="btnFactoryReset">
+                                完全初期化
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary close-modal-btn">キャンセル</button>
+                <button class="btn-primary" id="saveSettingsBtn"><i class="fa-solid fa-save"></i> 設定を保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Confirmation Modal -->
+    <div class="modal-overlay" id="confirmModal" style="z-index: 2000;">
+        <div class="modal-content small-modal">
+            <div class="modal-header warning-header">
+                <h2 id="confirmTitle" style="color: #dc2626;"><i class="fa-solid fa-triangle-exclamation"></i> 確認</h2>
+            </div>
+            <div class="modal-body">
+                <p id="confirmMessage" style="font-size: 1rem; line-height: 1.6;">よろしいですか？</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="confirmCancelBtn"
+                    style="font-weight: bold; border: 2px solid #ccc;">キャンセル</button>
+                <button class="btn-danger-fill" id="confirmOkBtn">実行する</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for New Student -->
+    <!-- Hidden Input for Excel Import -->
+    <input type="file" id="importStudentInput" accept=".xlsx, .xls" style="display: none;">
+
+    <!-- Modal for New Student -->
+    <div class="modal-overlay" id="studentModal">
+        <div class="modal-content small-modal">
+            <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+            <div class="modal-header">
+                <h2>新規生徒登録</h2>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>生徒名</label>
+                    <input type="text" id="newStudentName" placeholder="例: 山田 太郎">
+                </div>
+                <div class="form-group" style="margin-top: 1rem;">
+                    <label>学年 (任意)</label>
+                    <input type="text" id="newStudentGrade" placeholder="例: 中3">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-primary" id="saveStudentBtn">登録</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for showing details (Mock) -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal-content">
+            <button class="close-modal"><i class="fa-solid fa-xmark"></i></button>
+            <div class="modal-header">
+                <div class="modal-badges" id="modalBadges"></div>
+                <h2 id="modalTitle">Title</h2>
+            </div>
+            <div class="modal-body">
+                <div class="modal-info-grid">
+                    <div class="info-item">
+                        <span class="label">仕入れ価格</span>
+                        <span class="value price-wholesale" id="modalWholesale"></span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">販売価格</span>
+                        <span class="value price-retail" id="modalRetail"></span>
+                    </div>
+                    <!-- Mock additional info -->
+                    <div class="info-item">
+                        <span class="label">出版社</span>
+                        <span class="value">教材出版Co.</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">在庫</span>
+                        <span class="value">あり</span>
+                    </div>
+                </div>
+                <p class="description">
+                    これは教材のデータベースプロトタイプです。実際のデータはExcelから読み込むか、データベースに接続して取得します。
+                    タイトルからの自動判別機能を搭載しています。
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary">編集</button>
+                <button class="btn-primary">カートに追加</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Material Add/Edit -->
+    <div class="modal-overlay" id="materialModal">
+        <div class="modal-content small-modal">
+            <button class="close-modal" onclick="document.getElementById('materialModal').classList.remove('active')"><i class="fa-solid fa-xmark"></i></button>
+            <div class="modal-header">
+                <h2 id="materialModalTitle">新規教材登録</h2>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>教材ID <span class="badge-required">必須</span></label>
+                    <input type="text" id="materialId" placeholder="例: 111-123456-11">
+                </div>
+                <div class="form-group" style="margin-top: 1rem;">
+                    <label>教材名 <span class="badge-required">必須</span></label>
+                    <input type="text" id="materialTitle" placeholder="例: 標準新演習 中1 英語">
+                </div>
+                <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                    <div class="form-group" style="flex:1;">
+                        <label>仕入価格</label>
+                        <input type="number" id="materialWholesale" placeholder="0">
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label>販売価格</label>
+                        <input type="number" id="materialRetail" placeholder="0">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="document.getElementById('materialModal').classList.remove('active')">キャンセル</button>
+                <button class="btn-primary" id="saveMaterialBtn"><i class="fa-solid fa-save"></i> 保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <script src="script.js"></script>
+</body>
+
+</html>

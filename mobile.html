@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>CataBooks Mobile</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Roboto:wght@500;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="mobile.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Top Header (Sticky) -->
+        <header class="app-header">
+            <div class="search-wrapper">
+                <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                <input type="text" id="searchInput" placeholder="教材名・キーワード検索" autocomplete="off">
+                <button id="clearSearchBtn" class="clear-btn" style="display: none;"><i
+                        class="fa-solid fa-circle-xmark"></i></button>
+            </div>
+            <div class="filter-scroll">
+                <button class="chip active" data-filter="all">すべて</button>
+                <button class="chip" data-filter="elementary">小学生</button>
+                <button class="chip" data-filter="junior">中学生</button>
+                <button class="chip" data-filter="high">高校生</button>
+                <div class="divider"></div>
+                <button class="chip" data-filter="english">英語</button>
+                <button class="chip" data-filter="math">数学</button>
+                <button class="chip" data-filter="japanese">国語</button>
+                <button class="chip" data-filter="science">理科</button>
+                <button class="chip" data-filter="social">社会</button>
+            </div>
+        </header>
+
+        <!-- Main Scrollable Content -->
+        <main class="main-content" id="mainContent">
+            <!-- Student Selector Banner (Sticky below header or static) -->
+            <div class="student-banner" id="studentBanner">
+                <div class="current-student">
+                    <span class="label">対象生徒:</span>
+                    <span class="student-name" id="currentStudentName">未選択</span>
+                </div>
+                <button class="btn-sm" id="changeStudentBtn">変更</button>
+            </div>
+
+            <div class="item-list" id="itemList">
+                <!-- Items injected here -->
+            </div>
+
+            <!-- Spacer for bottom nav -->
+            <div style="height: 80px;"></div>
+        </main>
+
+        <!-- Bottom Navigation -->
+        <nav class="bottom-nav">
+            <button class="nav-item active" data-tab="home">
+                <i class="fa-solid fa-house"></i>
+                <span>ホーム</span>
+            </button>
+            <button class="nav-item" data-tab="favorites">
+                <i class="fa-solid fa-star"></i>
+                <span>お気に</span>
+            </button>
+            <button class="nav-item cart-nav-item" data-tab="cart">
+                <div class="icon-wrapper">
+                    <i class="fa-solid fa-cart-shopping"></i>
+                    <span class="badge" id="cartBadge" style="display: none;">0</span>
+                </div>
+                <span>カート</span>
+            </button>
+            <button class="nav-item" data-tab="menu">
+                <i class="fa-solid fa-bars"></i>
+                <span>メニュー</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- Modals -->
+
+    <!-- Student Selection Modal -->
+    <div class="sheet-overlay" id="studentModal">
+        <div class="bottom-sheet">
+            <div class="sheet-header">
+                <h3>生徒を選択</h3>
+                <button class="close-sheet"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="sheet-body">
+                <button class="btn-create-new" id="createNewStudentBtn">
+                    <i class="fa-solid fa-user-plus"></i> 新しい生徒を登録
+                </button>
+                <div class="student-list" id="studentList">
+                    <!-- Students injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Student Input Modal (Nested or separate) -->
+    <div class="modal-overlay" id="newStudentModal">
+        <div class="modal-box">
+            <h3>生徒登録</h3>
+            <div class="form-group">
+                <label>氏名</label>
+                <input type="text" id="newStudentNameInput" placeholder="山田 太郎">
+            </div>
+            <div class="form-group">
+                <label>学年 (任意)</label>
+                <input type="text" id="newStudentGradeInput" placeholder="中3">
+            </div>
+            <div class="modal-actions">
+                <button class="btn-cancel" id="cancelNewStudentBtn">キャンセル</button>
+                <button class="btn-save" id="saveNewStudentBtn">登録</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Item Detail Modal -->
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal-box detail-box">
+            <div class="detail-header">
+                <div class="detail-badges" id="detailBadges"></div>
+                <button class="close-detail"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <h2 id="detailTitle">教材タイトル</h2>
+            <div class="detail-prices">
+                <div class="price-row retail">
+                    <span>販売価格 (税込)</span>
+                    <strong id="detailRetail">¥0</strong>
+                </div>
+                <div class="price-row wholesale">
+                    <span>仕入価格 (税込)</span>
+                    <span id="detailWholesale">¥0</span>
+                </div>
+            </div>
+            <div class="detail-actions">
+                <button class="btn-fav" id="detailFavBtn"><i class="fa-regular fa-star"></i></button>
+                <button class="btn-add-cart" id="detailAddCartBtn">カートに追加</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Menu / Settings Modal -->
+    <div class="sheet-overlay" id="menuModal">
+        <div class="bottom-sheet">
+            <div class="sheet-header">
+                <h3>メニュー</h3>
+                <button class="close-sheet"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="sheet-body menu-list">
+                <button class="menu-item" id="menuHistory"><i class="fa-solid fa-clock-rotate-left"></i> 履歴</button>
+                <button class="menu-item" id="menuSettings"><i class="fa-solid fa-gear"></i> 設定</button>
+                <button class="menu-item danger" id="menuReset"><i class="fa-solid fa-trash-can"></i> データリセット</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <script src="mobile.js"></script>
+</body>
+
+</html>
