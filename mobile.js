@@ -38,6 +38,39 @@ function estimateTagsFromTitle(title) {
     return { level, subject, special };
 }
 
+function normalizeSearchText(value) {
+    if (!value) return '';
+    try {
+        return value.normalize('NFKC').toLowerCase();
+    } catch (e) {
+        return String(value).toLowerCase();
+    }
+}
+
+function getSearchKeywords(rawSearch) {
+    return normalizeSearchText(rawSearch).split(/[\s\u3000]+/).filter(k => k);
+}
+
+function matchesSearch(item, rawSearch) {
+    const keywords = getSearchKeywords(rawSearch);
+    if (keywords.length === 0) return true;
+    const haystack = normalizeSearchText(`${item.title || ''} ${item.id || ''}`);
+    return keywords.every(keyword => haystack.includes(keyword));
+}
+
+function searchRelevanceScore(item, rawSearch) {
+    const keywords = getSearchKeywords(rawSearch);
+    if (keywords.length === 0) return 0;
+    const title = normalizeSearchText(item.title || '');
+    const compact = title.replace(/[\s\u3000]+/g, '');
+    const joined = keywords.join('');
+    if (compact === joined) return 0;
+    const idx = compact.indexOf(joined);
+    if (idx === 0) return 1;
+    if (idx > 0) return 10 + idx;
+    return 100 + compact.length;
+}
+
 // Init
 document.addEventListener('DOMContentLoaded', async () => {
     initSupabase();
@@ -125,16 +158,16 @@ function renderContent() {
 
 function renderHomeItems(container) {
     let items = enhancedData.filter(item => {
-        if (currentState.search) {
-            const keywords = currentState.search.toLowerCase().split(/\s+/).filter(k => k);
-            if (!keywords.every(k => item.title.toLowerCase().includes(k))) return false;
-        }
+        if (!matchesSearch(item, currentState.search)) return false;
         if (currentState.filterLevel !== 'all' && item.level !== currentState.filterLevel) return false;
         if (currentState.filterSubject !== 'all' && item.subject !== currentState.filterSubject) return false;
         return true;
     });
 
-    const displayItems = items.slice(0, 50);
+    items.sort((a, b) => searchRelevanceScore(a, currentState.search) - searchRelevanceScore(b, currentState.search));
+
+    const displayLimit = currentState.search ? 300 : 50;
+    const displayItems = items.slice(0, displayLimit);
 
     if (displayItems.length === 0) {
         container.innerHTML = '<div class="empty-state"><i class="fa-solid fa-magnifying-glass"></i><p>該当する教材がありません</p></div>';
@@ -143,10 +176,10 @@ function renderHomeItems(container) {
 
     displayItems.forEach(item => container.appendChild(createItemCard(item)));
 
-    if (items.length > 50) {
+    if (items.length > displayLimit) {
         const more = document.createElement('div');
         more.style.cssText = 'text-align:center; padding:10px; color:#999;';
-        more.innerText = `他 ${items.length - 50} 件 (検索して絞り込んでください)`;
+        more.innerText = `他 ${items.length - displayLimit} 件 (キーワードを足して絞り込んでください)`;
         container.appendChild(more);
     }
 }

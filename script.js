@@ -26,6 +26,39 @@ function estimateTagsFromTitle(title) {
     return { level, subject, special };
 }
 
+function normalizeSearchText(value) {
+    if (!value) return '';
+    try {
+        return value.normalize('NFKC').toLowerCase();
+    } catch (e) {
+        return String(value).toLowerCase();
+    }
+}
+
+function getSearchKeywords(rawSearch) {
+    return normalizeSearchText(rawSearch).split(/[\s\u3000]+/).filter(k => k);
+}
+
+function matchesSearch(item, rawSearch) {
+    const keywords = getSearchKeywords(rawSearch);
+    if (keywords.length === 0) return true;
+    const haystack = normalizeSearchText(`${item.title || ''} ${item.id || ''}`);
+    return keywords.every(keyword => haystack.includes(keyword));
+}
+
+function searchRelevanceScore(item, rawSearch) {
+    const keywords = getSearchKeywords(rawSearch);
+    if (keywords.length === 0) return 0;
+    const title = normalizeSearchText(item.title || '');
+    const compact = title.replace(/[\s\u3000]+/g, '');
+    const joined = keywords.join('');
+    if (compact === joined) return 0;
+    const idx = compact.indexOf(joined);
+    if (idx === 0) return 1;
+    if (idx > 0) return 10 + idx;
+    return 100 + compact.length;
+}
+
 // === APP STATE ===
 let currentState = {
     search: '',
@@ -311,7 +344,7 @@ function setupEventListeners() {
     });
 
     // Search & Sort
-    searchInput.addEventListener('input', (e) => { currentState.search = e.target.value.toLowerCase(); renderGrid(); });
+    searchInput.addEventListener('input', (e) => { currentState.search = e.target.value; renderGrid(); });
     sortSelect.addEventListener('change', (e) => { currentState.sort = e.target.value; renderGrid(); });
 
     // Detail Modal
@@ -818,18 +851,18 @@ async function handleMaterialExcelImport(e) {
             let idIdx = -1, titleIdx = -1, wholesaleIdx = -1, retailIdx = -1;
             header.forEach((cell, idx) => {
                 const c = (cell || '').toString();
-                if (c.includes('ID') || c.includes('id') || c.includes('教材ID')) idIdx = idx;
-                if (c.includes('教材名') || c.includes('品名') || c.includes('タイトル')) titleIdx = idx;
-                if (c.includes('仕入')) wholesaleIdx = idx;
-                if (c.includes('販売') || c.includes('価格')) retailIdx = idx;
+                if (c.includes('物品コード') || c.includes('教材ID') || c.includes('教材コード') || c === 'ID' || c === 'id') idIdx = idx;
+                if (c.includes('物品名') || c.includes('教材名') || c.includes('品名') || c.includes('タイトル')) titleIdx = idx;
+                if (c.includes('仕入') || c.includes('提供価格')) wholesaleIdx = idx;
+                if (c.includes('販売')) retailIdx = idx;
             });
 
             if (titleIdx === -1) {
-                alert('「教材名」列が見つかりません。\nサンプルファイルの書式を参考にしてください。');
+                alert('「教材名」または「物品名」列が見つかりません。\nサンプルファイルの書式を参考にしてください。');
                 return;
             }
 
-            let addCount = 0, skipCount = 0;
+            let addCount = 0, updateCount = 0;
             for (let i = 1; i < jsonData.length; i++) {
                 const row = jsonData[i];
                 if (!row || row.length === 0) continue;
@@ -843,20 +876,21 @@ async function handleMaterialExcelImport(e) {
 
                 const wholesale = wholesaleIdx >= 0 ? (parseInt(row[wholesaleIdx]) || 0) : 0;
                 const retail = retailIdx >= 0 ? (parseInt(row[retailIdx]) || 0) : 0;
+                const payload = { title, price_wholesale: wholesale, price_retail: retail };
 
                 if (enhancedData.some(m => m.id === id)) {
-                    skipCount++;
+                    const result = await updateMaterial(id, payload);
+                    if (result) updateCount++;
                     continue;
                 }
 
-                const result = await addMaterial({ id, title, price_wholesale: wholesale, price_retail: retail });
+                const result = await addMaterial({ id, ...payload });
                 if (result) addCount++;
             }
 
             await reloadMaterials();
-            let msg = `${addCount}件の教材をインポートしました`;
-            if (skipCount > 0) msg += `\n(重複スキップ: ${skipCount}件)`;
-            await addHistoryRecord('Excelインポート', `教材を${addCount}件インポートしました`);
+            const msg = `教材を追加 ${addCount} 件、更新 ${updateCount} 件しました`;
+            await addHistoryRecord('Excelインポート', msg);
             alert(msg);
 
         } catch (error) {
@@ -1018,8 +1052,7 @@ function renderGrid() {
         if (currentState.viewMode === 'favorites') {
             if (!currentState.favorites.includes(item.id)) return false;
         }
-        const searchKeywords = currentState.search.toLowerCase().split(/[\s\u3000]+/).filter(k => k);
-        const matchSearch = searchKeywords.every(keyword => item.title.toLowerCase().includes(keyword));
+        const matchSearch = matchesSearch(item, currentState.search);
         const matchLevel = currentState.filterLevel === 'all' || item.level === currentState.filterLevel;
         const matchSubject = currentState.filterSubject === 'all' || item.subject === currentState.filterSubject;
         let matchSpecial = true;
@@ -1032,6 +1065,7 @@ function renderGrid() {
     // Sort
     if (currentState.sort === 'price-asc') filtered.sort((a, b) => a.price_retail - b.price_retail);
     else if (currentState.sort === 'price-desc') filtered.sort((a, b) => b.price_retail - a.price_retail);
+    else filtered.sort((a, b) => searchRelevanceScore(a, currentState.search) - searchRelevanceScore(b, currentState.search));
 
     const countLabelBase = currentState.viewMode === 'favorites' ? 'お気に入り' : '検索結果';
     document.querySelector('#resultsCount').innerHTML = `${countLabelBase}: <span class="count-animate">${filtered.length}</span> 件`;
