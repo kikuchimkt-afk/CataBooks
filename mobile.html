@@ -161,9 +161,84 @@
         </div>
     </div>
 
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="mobileSettingsModal" role="dialog" aria-modal="true" hidden
+        aria-labelledby="mobileSettingsTitle" aria-describedby="mobileSettingsDescription">
+        <div class="modal-box settings-box">
+            <h3 id="mobileSettingsTitle">設定</h3>
+            <p class="modal-description" id="mobileSettingsDescription">見積書に表示する教室情報と送料を設定します。</p>
+
+            <div class="form-group">
+                <label for="mobileSettingSchoolName">教室名</label>
+                <input type="text" id="mobileSettingSchoolName" autocomplete="organization">
+            </div>
+            <div class="form-group">
+                <label for="mobileSettingAddress">郵便番号・住所</label>
+                <input type="text" id="mobileSettingAddress" autocomplete="street-address">
+            </div>
+            <div class="form-group">
+                <label for="mobileSettingPhone">電話番号</label>
+                <input type="tel" id="mobileSettingPhone" autocomplete="tel">
+            </div>
+            <div class="form-group">
+                <label for="mobileSettingTaxRate">消費税率（0.10 = 10%）</label>
+                <input type="number" id="mobileSettingTaxRate" min="0" max="1" step="0.01" inputmode="decimal">
+            </div>
+            <div class="form-group">
+                <label for="mobileSettingShippingFee">設定送料（税込）</label>
+                <div class="mobile-input-with-unit">
+                    <input type="number" id="mobileSettingShippingFee" min="0" step="1" inputmode="numeric"
+                        placeholder="0">
+                    <span>円</span>
+                </div>
+                <p class="field-help">生徒1人の見積書につき1回加算します。作成時にオン／オフを選べます。</p>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-cancel" id="cancelMobileSettingsBtn" type="button">キャンセル</button>
+                <button class="btn-save" id="saveMobileSettingsBtn" type="button">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quotation Options Modal -->
+    <div class="modal-overlay" id="mobileQuoteOptionsModal" role="dialog" aria-modal="true" hidden
+        aria-labelledby="mobileQuoteOptionsTitle" aria-describedby="mobileQuoteOptionNote">
+        <div class="modal-box quote-options-box">
+            <h3 id="mobileQuoteOptionsTitle">見積書を作成</h3>
+            <p class="modal-description" id="mobileQuoteStudentName"></p>
+
+            <div class="quote-summary-box" aria-live="polite">
+                <div class="quote-summary-row">
+                    <span>教材小計</span>
+                    <strong id="mobileQuoteItemsSubtotal">¥0</strong>
+                </div>
+                <label class="quote-shipping-option" for="mobileQuoteIncludeShipping">
+                    <span class="quote-shipping-copy">
+                        <strong>設定送料を含める</strong>
+                        <small id="mobileQuoteShippingDescription">設定送料 ¥0（税込）</small>
+                    </span>
+                    <input type="checkbox" id="mobileQuoteIncludeShipping">
+                    <span class="toggle-switch" aria-hidden="true"></span>
+                </label>
+                <div class="quote-summary-row total">
+                    <span>見積合計（税込）</span>
+                    <strong id="mobileQuoteGrandTotal">¥0</strong>
+                </div>
+            </div>
+            <p class="quote-option-note" id="mobileQuoteOptionNote">送料は今回の見積書だけに反映され、仕入・発注用集計には含まれません。</p>
+
+            <div class="modal-actions">
+                <button class="btn-cancel" id="cancelMobileQuoteBtn" type="button">キャンセル</button>
+                <button class="btn-save" id="confirmMobileQuoteBtn" type="button">この内容で作成</button>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="supabase-client.js"></script>
+    <script src="quote-utils.js"></script>
     <script src="mobile.js"></script>
 </body>
 

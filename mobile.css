@@ -402,6 +402,10 @@ body {
     transform: scale(1);
 }
 
+.modal-overlay[hidden] {
+    display: none;
+}
+
 /* Detail Modal Styles */
 .detail-header {
     display: flex;
@@ -580,6 +584,139 @@ body {
 .btn-save {
     background: var(--primary);
     color: white;
+}
+
+.settings-box {
+    max-height: min(86vh, 720px);
+    overflow-y: auto;
+}
+
+.settings-box h3,
+.quote-options-box h3 {
+    margin: 0 0 6px;
+}
+
+.modal-description {
+    margin: 0 0 20px;
+    color: var(--text-light);
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.mobile-input-with-unit {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.mobile-input-with-unit input {
+    min-width: 0;
+    flex: 1;
+}
+
+.mobile-input-with-unit span {
+    flex: 0 0 auto;
+    color: var(--text-light);
+}
+
+.field-help,
+.quote-option-note {
+    margin: 6px 0 0;
+    color: var(--text-light);
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.quote-summary-box {
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+}
+
+.quote-summary-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px;
+}
+
+.quote-summary-row.total {
+    color: var(--primary);
+    background: var(--primary-light);
+    border-top: 1px solid #c7d2fe;
+    font-size: 17px;
+}
+
+.quote-shipping-option {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px;
+    border-top: 1px solid var(--border);
+}
+
+.quote-shipping-option:focus-within {
+    outline: 3px solid rgba(79, 70, 229, 0.22);
+    outline-offset: -3px;
+}
+
+.quote-shipping-option.is-disabled {
+    background: var(--bg);
+    opacity: 0.7;
+}
+
+.quote-shipping-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.quote-shipping-copy small {
+    color: var(--text-light);
+    line-height: 1.35;
+}
+
+.quote-shipping-option input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+}
+
+.toggle-switch {
+    width: 48px;
+    height: 28px;
+    padding: 3px;
+    border-radius: 999px;
+    background: #cbd5e1;
+    flex: 0 0 auto;
+    transition: background 0.2s ease;
+}
+
+.toggle-switch::after {
+    content: '';
+    display: block;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: white;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+    transition: transform 0.2s ease;
+}
+
+.quote-shipping-option input:checked + .toggle-switch {
+    background: var(--primary);
+}
+
+.quote-shipping-option input:checked + .toggle-switch::after {
+    transform: translateX(20px);
+}
+
+.quote-option-note {
+    margin-top: 10px;
 }
 
 /* Empty States */

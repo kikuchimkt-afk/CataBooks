@@ -1,7 +1,18 @@
 // Mobile JS for BestOne DB - Supabase Version
 
+const DEFAULT_SETTINGS = {
+    schoolName: 'ECCベストワン藍住・北島中央',
+    address: '〒771-1252 徳島県板野郡藍住町矢上字北分82-1 テナント新居NO.4',
+    phone: '088-692-5483',
+    taxRate: 0.10,
+    shippingFee: 0
+};
+
 // Data & State
 let enhancedData = [];
+let pendingQuoteStudentId = null;
+let mobileQuoteTrigger = null;
+let mobileSettingsTrigger = null;
 let currentState = {
     search: '',
     filterLevel: 'all',
@@ -11,12 +22,7 @@ let currentState = {
     currentStudentId: null,
     currentCart: [],
     favorites: [],
-    settings: {
-        schoolName: 'ECCベストワン藍住・北島中央',
-        taxRate: 0.10,
-        address: '',
-        phone: ''
-    }
+    settings: { ...DEFAULT_SETTINGS }
 };
 
 // Tag estimation
@@ -110,10 +116,16 @@ async function loadAllData() {
         currentState.favorites = await getFavorites();
 
         const settings = await loadSettings();
-        if (settings.schoolName) currentState.settings.schoolName = settings.schoolName;
-        if (settings.taxRate !== undefined) currentState.settings.taxRate = settings.taxRate;
-        if (settings.address) currentState.settings.address = settings.address;
-        if (settings.phone) currentState.settings.phone = settings.phone;
+        const hasSetting = (key) => Object.prototype.hasOwnProperty.call(settings, key);
+        currentState.settings = {
+            ...DEFAULT_SETTINGS,
+            ...settings,
+            schoolName: hasSetting('schoolName') ? settings.schoolName : DEFAULT_SETTINGS.schoolName,
+            address: hasSetting('address') ? settings.address : DEFAULT_SETTINGS.address,
+            phone: hasSetting('phone') ? settings.phone : DEFAULT_SETTINGS.phone,
+            taxRate: QuoteUtils.normalizeTaxRate(settings.taxRate),
+            shippingFee: QuoteUtils.normalizeShippingFee(settings.shippingFee)
+        };
     } catch (e) {
         console.error('[Mobile] Load error:', e);
     }
@@ -236,17 +248,102 @@ function removeCartFooter() {
 
 function renderCartFooter() {
     removeCartFooter();
-    const total = currentState.currentCart.reduce((sum, i) => sum + (parseInt(i.price_retail) || 0), 0);
+    const quote = QuoteUtils.calculateQuote(currentState.currentCart, currentState.settings, false);
     const footer = document.createElement('div');
     footer.className = 'cart-footer-actions';
     footer.innerHTML = `
-        <div class="cart-total"><span>合計</span><span>¥${total.toLocaleString()}</span></div>
+        <div class="cart-total"><span>教材小計</span><span>${formatYen(quote.itemsSubtotal)}</span></div>
         <button class="btn-checkout" id="btnCheckout">見積書を作成</button>`;
     document.querySelector('.app-container').appendChild(footer);
     document.getElementById('btnCheckout').addEventListener('click', () => {
         const student = currentState.students.find(s => s.id === currentState.currentStudentId);
-        if (student) printQuotation(student);
+        if (student) openQuoteOptions(student);
     });
+}
+
+function formatYen(amount) {
+    return `¥${QuoteUtils.normalizeYen(amount).toLocaleString()}`;
+}
+
+function openQuoteOptions(student) {
+    if (!student || currentState.currentCart.length === 0) return;
+
+    pendingQuoteStudentId = student.id;
+    mobileQuoteTrigger = document.activeElement;
+    const modal = document.getElementById('mobileQuoteOptionsModal');
+    const includeShipping = document.getElementById('mobileQuoteIncludeShipping');
+    const configuredShippingFee = QuoteUtils.normalizeShippingFee(currentState.settings.shippingFee);
+
+    document.getElementById('mobileQuoteStudentName').textContent = `${student.name} 様`;
+    includeShipping.checked = configuredShippingFee > 0;
+    includeShipping.disabled = configuredShippingFee === 0;
+
+    const shippingOption = includeShipping.closest('.quote-shipping-option');
+    if (shippingOption) shippingOption.classList.toggle('is-disabled', configuredShippingFee === 0);
+
+    document.getElementById('mobileQuoteShippingDescription').textContent = configuredShippingFee > 0
+        ? `設定送料 ${formatYen(configuredShippingFee)}（税込）`
+        : '設定画面で送料を登録してください';
+
+    updateQuoteOptionsSummary();
+    modal.hidden = false;
+    modal.classList.add('active');
+    setTimeout(() => {
+        const focusTarget = configuredShippingFee > 0
+            ? includeShipping
+            : document.getElementById('confirmMobileQuoteBtn');
+        focusTarget.focus();
+    }, 50);
+}
+
+function closeQuoteOptions() {
+    const modal = document.getElementById('mobileQuoteOptionsModal');
+    modal.classList.remove('active');
+    modal.hidden = true;
+    pendingQuoteStudentId = null;
+    if (mobileQuoteTrigger && typeof mobileQuoteTrigger.focus === 'function') {
+        mobileQuoteTrigger.focus();
+    }
+    mobileQuoteTrigger = null;
+}
+
+function getPendingQuoteStudent() {
+    return currentState.students.find(student => student.id === pendingQuoteStudentId) || null;
+}
+
+function updateQuoteOptionsSummary() {
+    if (!getPendingQuoteStudent()) return;
+
+    const includeShipping = document.getElementById('mobileQuoteIncludeShipping');
+    const quote = QuoteUtils.calculateQuote(
+        currentState.currentCart,
+        currentState.settings,
+        includeShipping.checked && !includeShipping.disabled
+    );
+
+    document.getElementById('mobileQuoteItemsSubtotal').textContent = formatYen(quote.itemsSubtotal);
+    document.getElementById('mobileQuoteGrandTotal').textContent = formatYen(quote.totalAmount);
+}
+
+function createQuotationFromOptions() {
+    const student = getPendingQuoteStudent();
+    if (!student || currentState.currentCart.length === 0) {
+        closeQuoteOptions();
+        return;
+    }
+
+    const includeShippingControl = document.getElementById('mobileQuoteIncludeShipping');
+    const includeShipping = includeShippingControl.checked && !includeShippingControl.disabled;
+    const restoreTarget = mobileQuoteTrigger;
+    const modal = document.getElementById('mobileQuoteOptionsModal');
+    modal.classList.remove('active');
+    modal.hidden = true;
+    pendingQuoteStudentId = null;
+    const printed = printQuotation(student, includeShipping);
+    if (!printed && restoreTarget && typeof restoreTarget.focus === 'function') {
+        restoreTarget.focus();
+    }
+    mobileQuoteTrigger = null;
 }
 
 function createItemCard(item) {
@@ -494,13 +591,33 @@ function setupEventListeners() {
     });
 
     // Settings
-    document.getElementById('menuSettings').addEventListener('click', async () => {
-        const newName = prompt('教室名を入力してください:', currentState.settings.schoolName);
-        if (newName !== null) {
-            currentState.settings.schoolName = newName;
-            await saveSetting('schoolName', newName);
-            alert('設定を保存しました');
-        }
+    document.getElementById('menuSettings').addEventListener('click', () => {
+        mobileSettingsTrigger = document.querySelector('[data-tab="menu"]');
+        document.getElementById('menuModal').classList.remove('active');
+        openMobileSettings();
+    });
+
+    document.getElementById('cancelMobileSettingsBtn').addEventListener('click', closeMobileSettings);
+    document.getElementById('saveMobileSettingsBtn').addEventListener('click', saveMobileSettings);
+
+    const mobileSettingsModal = document.getElementById('mobileSettingsModal');
+    mobileSettingsModal.addEventListener('click', (event) => {
+        if (event.target === mobileSettingsModal) closeMobileSettings();
+    });
+    mobileSettingsModal.addEventListener('keydown', (event) => {
+        handleModalKeyboard(event, mobileSettingsModal, closeMobileSettings);
+    });
+
+    document.getElementById('mobileQuoteIncludeShipping').addEventListener('change', updateQuoteOptionsSummary);
+    document.getElementById('cancelMobileQuoteBtn').addEventListener('click', closeQuoteOptions);
+    document.getElementById('confirmMobileQuoteBtn').addEventListener('click', createQuotationFromOptions);
+
+    const mobileQuoteOptionsModal = document.getElementById('mobileQuoteOptionsModal');
+    mobileQuoteOptionsModal.addEventListener('click', (event) => {
+        if (event.target === mobileQuoteOptionsModal) closeQuoteOptions();
+    });
+    mobileQuoteOptionsModal.addEventListener('keydown', (event) => {
+        handleModalKeyboard(event, mobileQuoteOptionsModal, closeQuoteOptions);
     });
 
     // History
@@ -518,38 +635,143 @@ function setupEventListeners() {
     });
 }
 
+function openMobileSettings() {
+    document.getElementById('mobileSettingSchoolName').value = currentState.settings.schoolName ?? DEFAULT_SETTINGS.schoolName;
+    document.getElementById('mobileSettingAddress').value = currentState.settings.address ?? DEFAULT_SETTINGS.address;
+    document.getElementById('mobileSettingPhone').value = currentState.settings.phone ?? DEFAULT_SETTINGS.phone;
+    document.getElementById('mobileSettingTaxRate').value = QuoteUtils.normalizeTaxRate(currentState.settings.taxRate);
+    document.getElementById('mobileSettingShippingFee').value = QuoteUtils.normalizeShippingFee(currentState.settings.shippingFee);
+    const modal = document.getElementById('mobileSettingsModal');
+    modal.hidden = false;
+    modal.classList.add('active');
+    setTimeout(() => document.getElementById('mobileSettingSchoolName').focus(), 50);
+}
+
+function closeMobileSettings() {
+    const modal = document.getElementById('mobileSettingsModal');
+    modal.classList.remove('active');
+    modal.hidden = true;
+    if (mobileSettingsTrigger && typeof mobileSettingsTrigger.focus === 'function') {
+        mobileSettingsTrigger.focus();
+    }
+    mobileSettingsTrigger = null;
+}
+
+async function saveMobileSettings() {
+    const shippingFeeInput = document.getElementById('mobileSettingShippingFee');
+    const taxRateInput = document.getElementById('mobileSettingTaxRate');
+    const shippingFeeRaw = shippingFeeInput.value.trim();
+    const taxRateRaw = taxRateInput.value.trim();
+    const shippingFee = shippingFeeRaw === '' ? 0 : Number(shippingFeeRaw);
+    const taxRate = Number(taxRateRaw);
+
+    if (!Number.isSafeInteger(shippingFee) || shippingFee < 0) {
+        alert('送料は0円以上の整数で入力してください');
+        shippingFeeInput.focus();
+        return;
+    }
+
+    if (taxRateRaw === '' || !Number.isFinite(taxRate) || taxRate < 0 || taxRate > 1) {
+        alert('消費税率は0から1の小数で入力してください（例: 10%は0.10）');
+        taxRateInput.focus();
+        return;
+    }
+
+    const nextSettings = {
+        schoolName: document.getElementById('mobileSettingSchoolName').value.trim(),
+        address: document.getElementById('mobileSettingAddress').value.trim(),
+        phone: document.getElementById('mobileSettingPhone').value.trim(),
+        taxRate,
+        shippingFee
+    };
+    const saveButton = document.getElementById('saveMobileSettingsBtn');
+    saveButton.disabled = true;
+
+    try {
+        const results = await Promise.all([
+            saveSetting('schoolName', nextSettings.schoolName),
+            saveSetting('address', nextSettings.address),
+            saveSetting('phone', nextSettings.phone),
+            saveSetting('taxRate', nextSettings.taxRate),
+            saveSetting('shippingFee', nextSettings.shippingFee)
+        ]);
+
+        if (results.some(result => result === false)) {
+            alert('設定を保存できませんでした。通信状態を確認して、もう一度お試しください。');
+            return;
+        }
+
+        currentState.settings = nextSettings;
+        closeMobileSettings();
+        alert('設定を保存しました');
+    } catch (error) {
+        console.error('[Mobile] Settings save error:', error);
+        alert('設定を保存できませんでした。通信状態を確認して、もう一度お試しください。');
+    } finally {
+        saveButton.disabled = false;
+    }
+}
+
+function handleModalKeyboard(event, modal, closeHandler) {
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        closeHandler();
+        return;
+    }
+
+    if (event.key !== 'Tab') return;
+    const focusable = Array.from(modal.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+    ));
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+}
+
 // Helpers
 function getLevelLabel(l) { return { elementary: '小', junior: '中', high: '高', unknown: '他' }[l] || l; }
 function getSubjectLabel(s) { return { english: '英', math: '数', japanese: '国', science: '理', social: '社', unknown: '他' }[s] || s; }
 
-function printQuotation(student) {
-    addHistoryRecord('見積書作成', `${student.name}様の見積書を作成しました`);
+function printQuotation(student, includeShipping = false) {
     const today = new Date();
     const dateStr = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
+    const quote = QuoteUtils.calculateQuote(currentState.currentCart, currentState.settings, includeShipping);
 
-    let totalAmount = 0;
     const itemsHtml = currentState.currentCart.map((item, index) => {
-        const price = parseInt(item.price_retail) || 0;
-        totalAmount += price;
+        const price = QuoteUtils.normalizeYen(item.price_retail);
         return `<tr><td class="center">${index + 1}</td><td>${item.title}</td><td class="center">1</td><td class="right">¥${price.toLocaleString()}</td><td class="right">¥${price.toLocaleString()}</td></tr>`;
     }).join('');
 
+    const shippingRowHtml = quote.shippingFee > 0 ? `
+        <tr class="shipping-row">
+            <td class="center">${currentState.currentCart.length + 1}</td>
+            <td>送料</td>
+            <td class="center">1</td>
+            <td class="right">¥${quote.shippingFee.toLocaleString()}</td>
+            <td class="right">¥${quote.shippingFee.toLocaleString()}</td>
+        </tr>` : '';
+
     const ROW_TARGET = 10;
-    const emptyRowsCount = Math.max(0, ROW_TARGET - currentState.currentCart.length);
+    const emptyRowsCount = Math.max(0, ROW_TARGET - quote.lineItemCount);
     let emptyRowsHtml = '';
     for (let i = 0; i < emptyRowsCount; i++) {
         emptyRowsHtml += '<tr><td class="center"></td><td></td><td class="center"></td><td class="right"></td><td class="right"></td></tr>';
     }
 
-    const taxRate = currentState.settings.taxRate || 0.10;
-    const taxAmount = Math.floor(totalAmount * taxRate / (1 + taxRate));
-
     const htmlContent = `<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8"><title>御見積書 - ${student.name}様</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;600&display=swap');
         body { font-family: 'Noto Serif JP', serif; margin: 0; padding: 0; background: #ccc; -webkit-print-color-adjust: exact; }
-        .page { width: 210mm; height: 297mm; padding: 15mm; margin: 10mm auto; background: white; box-sizing: border-box; position: relative; }
-        @media print { body { background: none; } .page { margin: 0; width: 100%; height: 100%; } @page { margin: 0; size: A4 portrait; } }
+        .page { width: 210mm; min-height: 297mm; padding: 15mm; margin: 10mm auto; background: white; box-sizing: border-box; position: relative; }
+        @media print { body { background: none; } .page { margin: 0; width: 100%; min-height: 297mm; height: auto; } @page { margin: 0; size: A4 portrait; } }
         .header { display: flex; justify-content: space-between; margin-bottom: 25px; }
         .title { font-size: 20pt; font-weight: 600; letter-spacing: 5px; border-bottom: 3px double #333; padding-bottom: 5px; }
         .date { text-align: right; font-size: 9pt; margin-bottom: 5px; }
@@ -564,6 +786,7 @@ function printQuotation(student) {
         table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 10pt; }
         th { background-color: #f0f0f0; border: 1px solid #333; padding: 6px; font-weight: 600; text-align: center; }
         td { border: 1px solid #333; padding: 6px; height: 35px; }
+        .shipping-row td { background-color: #fafafa; font-weight: 600; }
         .center { text-align: center; } .right { text-align: right; }
         .col-no { width: 30px; } .col-qty { width: 40px; } .col-unit { width: 80px; } .col-amount { width: 80px; }
         .remarks { border: 1px solid #333; padding: 8px; height: 80px; font-size: 9pt; }
@@ -582,20 +805,30 @@ function printQuotation(student) {
         </div>
         <div class="total-block">
             <span class="total-label">御見積金額</span>
-            <span class="total-amount">¥${totalAmount.toLocaleString()}-</span>
+            <span class="total-amount">¥${quote.totalAmount.toLocaleString()}-</span>
             <span style="font-size: 10pt;"> (税込)</span>
             <div style="font-size: 9pt; text-align: right; margin-top: 5px; color: #555;">
-                (内消費税等 ${Math.round(taxRate * 100)}%: ¥${taxAmount.toLocaleString()})
+                (内消費税等 ${Math.round(quote.taxRate * 100)}%: ¥${quote.taxAmount.toLocaleString()})
             </div>
         </div>
         <table><thead><tr><th class="col-no">No.</th><th>品名</th><th class="col-qty">数量</th><th class="col-unit">単価</th><th class="col-amount">金額</th></tr></thead>
-        <tbody>${itemsHtml}${emptyRowsHtml}</tbody></table>
+        <tbody>${itemsHtml}${shippingRowHtml}${emptyRowsHtml}</tbody></table>
         <div class="remarks"><div class="remarks-title">備考</div><p>有効期限: 本日より2週間<br>※本見積書はシステムによる自動発行です。</p></div>
     </div>
     <script>window.onload = function() { setTimeout(() => { window.print(); }, 500); };<\/script>
     </body></html>`;
 
     const win = window.open('', '_blank');
+    if (!win) {
+        alert('見積書を開けませんでした。ブラウザのポップアップを許可して、もう一度お試しください。');
+        return false;
+    }
+
+    const shippingHistory = quote.shippingFee > 0
+        ? `（送料 ¥${quote.shippingFee.toLocaleString()}を含む）`
+        : '（送料なし）';
+    void addHistoryRecord('見積書作成', `${student.name}様の見積書を作成しました${shippingHistory}`);
     win.document.write(htmlContent);
     win.document.close();
+    return true;
 }

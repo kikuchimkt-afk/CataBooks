@@ -217,7 +217,7 @@
                         <span id="cartTotalWholesale">¥0</span>
                     </div>
                     <div class="summary-row retail">
-                        <span>合計 (販売)</span>
+                        <span>教材小計 (販売)</span>
                         <span class="total-price" id="cartTotalRetail">¥0</span>
                     </div>
                 </div>
@@ -313,6 +313,13 @@
                         </label>
                     </div>
                 </div>
+                <label id="batchShippingOption" class="batch-shipping-option" for="batchIncludeShipping" hidden>
+                    <span>
+                        <strong>設定送料を含める</strong>
+                        <small id="batchShippingDescription">生徒1人につき設定送料を1回加算します</small>
+                    </span>
+                    <input type="checkbox" id="batchIncludeShipping">
+                </label>
                 <div id="batchStudentList" style="max-height: 40vh; overflow-y: auto; border: 1px solid var(--border, #e2e8f0); border-radius: 8px; padding: 0.5rem;">
                     <!-- Dynamically populated -->
                 </div>
@@ -414,11 +421,21 @@
                 <div class="settings-section">
                     <h3><i class="fa-solid fa-calculator"></i> システム設定</h3>
                     <div class="form-group">
-                        <label>消費税率</label>
+                        <label for="settingTaxRate">消費税率（小数）</label>
                         <div class="input-with-unit">
-                            <input type="number" id="settingTaxRate" placeholder="0.10" step="0.01" value="0.10">
-                            <span>% (標準: 0.10)</span>
+                            <input type="number" id="settingTaxRate" placeholder="0.10" min="0" max="1" step="0.01"
+                                value="0.10">
+                            <span>0.10 = 10%</span>
                         </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="settingShippingFee">設定送料（税込）</label>
+                        <div class="input-with-unit">
+                            <input type="number" id="settingShippingFee" placeholder="0" min="0" step="1"
+                                inputmode="numeric">
+                            <span>円</span>
+                        </div>
+                        <p class="field-help">生徒1人の見積書につき1回加算する固定額です。見積書を作るたびに、含めるかどうかを選べます。</p>
                     </div>
                 </div>
 
@@ -454,6 +471,46 @@
         </div>
     </div>
 
+    <!-- Quotation Options Modal -->
+    <div class="modal-overlay" id="quoteOptionsModal" role="dialog" aria-modal="true" hidden
+        aria-labelledby="quoteOptionsTitle">
+        <div class="modal-content small-modal quote-options-modal">
+            <button class="close-modal close-quote-modal" type="button" aria-label="閉じる"><i
+                    class="fa-solid fa-xmark"></i></button>
+            <div class="modal-header">
+                <h2 id="quoteOptionsTitle"><i class="fa-solid fa-file-lines"></i> 見積書を作成</h2>
+                <p class="quote-student" id="quoteTargetLabel"></p>
+            </div>
+            <div class="modal-body">
+                <div class="quote-summary-box" aria-live="polite">
+                    <div class="quote-summary-row">
+                        <span>教材小計</span>
+                        <strong id="quoteItemsSubtotal">¥0</strong>
+                    </div>
+                    <label class="quote-shipping-option" for="quoteIncludeShipping">
+                        <span class="quote-shipping-copy">
+                            <strong>設定送料を含める</strong>
+                            <small id="quoteShippingDescription">設定送料 ¥0（税込）</small>
+                        </span>
+                        <input type="checkbox" id="quoteIncludeShipping">
+                        <span class="quote-toggle-switch" aria-hidden="true"></span>
+                    </label>
+                    <div class="quote-summary-row total">
+                        <span>見積合計（税込）</span>
+                        <strong id="quoteGrandTotal">¥0</strong>
+                    </div>
+                </div>
+                <p class="quote-option-note">送料は今回作成する見積書だけに反映され、請求書・仕入・発注用集計には含まれません。</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary close-quote-modal" type="button">キャンセル</button>
+                <button class="btn-primary" id="confirmCreateQuoteBtn" type="button">
+                    <i class="fa-solid fa-file-pdf"></i> この内容で作成
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Custom Confirmation Modal -->
     <div class="modal-overlay" id="confirmModal" style="z-index: 2000;">
         <div class="modal-content small-modal">
@@ -470,10 +527,6 @@
             </div>
         </div>
     </div>
-
-    <!-- Modal for New Student -->
-    <!-- Hidden Input for Excel Import -->
-    <input type="file" id="importStudentInput" accept=".xlsx, .xls" style="display: none;">
 
     <!-- Modal for New Student -->
     <div class="modal-overlay" id="studentModal">
@@ -635,6 +688,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="supabase-client.js"></script>
+    <script src="quote-utils.js"></script>
     <script src="script.js"></script>
 </body>
 

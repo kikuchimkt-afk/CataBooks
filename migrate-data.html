@@ -380,8 +380,9 @@ ALTER PUBLICATION supabase_realtime ADD TABLE cart_items;`;
                 let settings = {
                     schoolName: 'ECCベストワン藍住・北島中央',
                     taxRate: 0.10,
-                    address: '',
-                    phone: ''
+                    address: '〒771-1252 徳島県板野郡藍住町矢上字北分82-1 テナント新居NO.4',
+                    phone: '088-692-5483',
+                    shippingFee: 0
                 };
                 if (saved) {
                     const state = JSON.parse(saved);
@@ -392,6 +393,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE cart_items;`;
                 await saveSetting('taxRate', settings.taxRate);
                 await saveSetting('address', settings.address || '');
                 await saveSetting('phone', settings.phone || '');
+                await saveSetting('shippingFee', Number.isFinite(Number(settings.shippingFee)) ? Math.max(0, Math.trunc(Number(settings.shippingFee))) : 0);
 
                 // Migrate favorites
                 if (saved) {

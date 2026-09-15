@@ -59,6 +59,20 @@ function searchRelevanceScore(item, rawSearch) {
     return 100 + compact.length;
 }
 
+const DEFAULT_SETTINGS = Object.freeze({
+    schoolName: 'ECCベストワン藍住・北島中央',
+    taxRate: 0.10,
+    address: '〒771-1252 徳島県板野郡藍住町矢上字北分82-1 テナント新居NO.4',
+    phone: '088-692-5483',
+    shippingFee: 0,
+    regNum: '',
+    bankDetails: '',
+    useHandlingFee: false,
+    handlingFeeAmount: 0,
+    paymentMethod: 'bank',
+    paymentDeadline: ''
+});
+
 // === APP STATE ===
 let currentState = {
     search: '',
@@ -72,18 +86,7 @@ let currentState = {
     currentCart: [],
 
     favorites: [],
-    settings: {
-        schoolName: 'ECCベストワン藍住・北島中央',
-        taxRate: 0.10,
-        address: '',
-        phone: '',
-        regNum: '',
-        bankDetails: '',
-        useHandlingFee: false,
-        handlingFeeAmount: 0,
-        paymentMethod: 'bank',
-        paymentDeadline: ''
-    },
+    settings: { ...DEFAULT_SETTINGS },
     viewMode: 'search',
 
     // Material editing
@@ -124,6 +127,10 @@ const mobileCartBadge = document.getElementById('mobileCartBadge');
 const drawerOverlay = document.getElementById('drawerOverlay');
 const sidebar = document.querySelector('.sidebar');
 const cartPanel = document.querySelector('.cart-panel');
+
+let pendingQuoteAction = null;
+let pendingQuoteCarts = [];
+let quoteOptionsTrigger = null;
 
 
 // === INITIALIZATION ===
@@ -210,16 +217,14 @@ async function loadAllData() {
 
         // Load settings
         const settings = await loadSettings();
-        if (settings.schoolName) currentState.settings.schoolName = settings.schoolName;
-        if (settings.taxRate !== undefined) currentState.settings.taxRate = settings.taxRate;
-        if (settings.address) currentState.settings.address = settings.address;
-        if (settings.phone) currentState.settings.phone = settings.phone;
-        if (settings.regNum) currentState.settings.regNum = settings.regNum;
-        if (settings.bankDetails) currentState.settings.bankDetails = settings.bankDetails;
-        if (settings.useHandlingFee !== undefined) currentState.settings.useHandlingFee = settings.useHandlingFee;
-        if (settings.handlingFeeAmount !== undefined) currentState.settings.handlingFeeAmount = settings.handlingFeeAmount;
-        if (settings.paymentMethod) currentState.settings.paymentMethod = settings.paymentMethod;
-        if (settings.paymentDeadline) currentState.settings.paymentDeadline = settings.paymentDeadline;
+        const hasSetting = (key) => Object.prototype.hasOwnProperty.call(settings, key);
+        currentState.settings = { ...DEFAULT_SETTINGS, ...settings };
+        currentState.settings.schoolName = hasSetting('schoolName') ? settings.schoolName : DEFAULT_SETTINGS.schoolName;
+        currentState.settings.address = hasSetting('address') ? settings.address : DEFAULT_SETTINGS.address;
+        currentState.settings.phone = hasSetting('phone') ? settings.phone : DEFAULT_SETTINGS.phone;
+        currentState.settings.taxRate = QuoteUtils.normalizeTaxRate(settings.taxRate);
+        currentState.settings.shippingFee = QuoteUtils.normalizeShippingFee(settings.shippingFee);
+        currentState.settings.handlingFeeAmount = QuoteUtils.normalizeYen(settings.handlingFeeAmount);
 
     } catch (e) {
         console.error('[App] Failed to load data:', e);
@@ -411,7 +416,7 @@ function setupEventListeners() {
     if (saveMaterialBtn) saveMaterialBtn.addEventListener('click', saveMaterialHandler);
 
     // Export buttons
-    if (createQuoteBtn) createQuoteBtn.addEventListener('click', () => handleCreateQuote('quote'));
+    if (createQuoteBtn) createQuoteBtn.addEventListener('click', requestCurrentQuote);
     if (createInvoiceBtn) createInvoiceBtn.addEventListener('click', () => handleCreateQuote('invoice'));
     if (batchInvoiceBtn) batchInvoiceBtn.addEventListener('click', handleBatchInvoice);
     if (exportStudentListBtn) exportStudentListBtn.addEventListener('click', handleExportStudentList);
@@ -434,6 +439,23 @@ function setupEventListeners() {
             batchModal.querySelectorAll('input[name="batchStudent"]').forEach(cb => cb.checked = false);
         });
         document.getElementById('batchGenerateBtn').addEventListener('click', executeBatchInvoice);
+        batchModal.querySelectorAll('input[name="batchDocType"]').forEach(radio => {
+            radio.addEventListener('change', () => updateBatchShippingOption(true));
+        });
+    }
+
+    // Quote options modal
+    const quoteModal = document.getElementById('quoteOptionsModal');
+    if (quoteModal) {
+        quoteModal.querySelectorAll('.close-quote-modal').forEach(btn => {
+            btn.addEventListener('click', closeQuoteOptions);
+        });
+        quoteModal.addEventListener('click', (event) => {
+            if (event.target === quoteModal) closeQuoteOptions();
+        });
+        quoteModal.addEventListener('keydown', handleQuoteOptionsKeydown);
+        document.getElementById('quoteIncludeShipping').addEventListener('change', updateQuoteOptionsSummary);
+        document.getElementById('confirmCreateQuoteBtn').addEventListener('click', confirmQuoteOptions);
     }
 
     // Cart copy & snapshot save/load
@@ -453,7 +475,7 @@ function setupEventListeners() {
         snapModal.querySelector('.close-modal-btn').addEventListener('click', () => snapModal.classList.remove('active'));
         snapModal.addEventListener('click', (e) => { if (e.target === snapModal) snapModal.classList.remove('active'); });
         document.getElementById('snapshotExportExcel').addEventListener('click', () => exportSnapshotExcel());
-        document.getElementById('snapshotExportQuotePdf').addEventListener('click', () => exportSnapshotPdf('quote'));
+        document.getElementById('snapshotExportQuotePdf').addEventListener('click', requestSnapshotQuote);
         document.getElementById('snapshotExportInvoicePdf').addEventListener('click', () => exportSnapshotPdf('invoice'));
     }
 
@@ -551,10 +573,11 @@ function updateViewMode(mode) {
 // === SETTINGS ===
 
 function openSettings() {
-    document.getElementById('settingSchoolName').value = currentState.settings.schoolName || '';
-    document.getElementById('settingAddress').value = currentState.settings.address || '';
-    document.getElementById('settingPhone').value = currentState.settings.phone || '';
-    document.getElementById('settingTaxRate').value = currentState.settings.taxRate || 0.10;
+    document.getElementById('settingSchoolName').value = currentState.settings.schoolName ?? DEFAULT_SETTINGS.schoolName;
+    document.getElementById('settingAddress').value = currentState.settings.address ?? DEFAULT_SETTINGS.address;
+    document.getElementById('settingPhone').value = currentState.settings.phone ?? DEFAULT_SETTINGS.phone;
+    document.getElementById('settingTaxRate').value = currentState.settings.taxRate ?? DEFAULT_SETTINGS.taxRate;
+    document.getElementById('settingShippingFee').value = QuoteUtils.normalizeShippingFee(currentState.settings.shippingFee);
     document.getElementById('settingRegNum').value = currentState.settings.regNum || '';
     document.getElementById('settingBankDetails').value = currentState.settings.bankDetails || '';
     document.getElementById('settingHandlingFeeAmount').value = currentState.settings.handlingFeeAmount || 0;
@@ -583,31 +606,59 @@ function openSettings() {
 }
 
 async function saveSettingsHandler() {
-    currentState.settings.schoolName = document.getElementById('settingSchoolName').value;
-    currentState.settings.address = document.getElementById('settingAddress').value;
-    currentState.settings.phone = document.getElementById('settingPhone').value;
-    currentState.settings.taxRate = parseFloat(document.getElementById('settingTaxRate').value);
-    currentState.settings.regNum = document.getElementById('settingRegNum').value;
-    currentState.settings.bankDetails = document.getElementById('settingBankDetails').value;
-    currentState.settings.handlingFeeAmount = parseInt(document.getElementById('settingHandlingFeeAmount').value) || 0;
-    currentState.settings.useHandlingFee = document.getElementById('settingUseHandlingFee').checked;
-    currentState.settings.paymentDeadline = document.getElementById('settingPaymentDeadline').value;
+    const taxInput = document.getElementById('settingTaxRate');
+    const shippingInput = document.getElementById('settingShippingFee');
+    const taxRate = Number(taxInput.value);
+    const shippingRaw = shippingInput.value.trim();
+    const shippingFee = shippingRaw === '' ? 0 : Number(shippingRaw);
+
+    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 1) {
+        alert('消費税率は0〜1の小数で入力してください（例：0.10）。');
+        taxInput.focus();
+        return;
+    }
+    if (!Number.isSafeInteger(shippingFee) || shippingFee < 0) {
+        alert('送料は0円以上の整数で入力してください。');
+        shippingInput.focus();
+        return;
+    }
+
     const selectedMethod = document.querySelector('input[name="settingPaymentMethod"]:checked');
-    currentState.settings.paymentMethod = selectedMethod ? selectedMethod.value : 'bank';
+    const nextSettings = {
+        ...currentState.settings,
+        schoolName: document.getElementById('settingSchoolName').value.trim(),
+        address: document.getElementById('settingAddress').value.trim(),
+        phone: document.getElementById('settingPhone').value.trim(),
+        taxRate,
+        shippingFee,
+        regNum: document.getElementById('settingRegNum').value,
+        bankDetails: document.getElementById('settingBankDetails').value,
+        handlingFeeAmount: parseInt(document.getElementById('settingHandlingFeeAmount').value) || 0,
+        useHandlingFee: document.getElementById('settingUseHandlingFee').checked,
+        paymentDeadline: document.getElementById('settingPaymentDeadline').value,
+        paymentMethod: selectedMethod ? selectedMethod.value : 'bank'
+    };
+    const saveButton = document.getElementById('saveSettingsBtn');
+    saveButton.disabled = true;
 
-    await saveSetting('schoolName', currentState.settings.schoolName);
-    await saveSetting('address', currentState.settings.address);
-    await saveSetting('phone', currentState.settings.phone);
-    await saveSetting('taxRate', currentState.settings.taxRate);
-    await saveSetting('regNum', currentState.settings.regNum);
-    await saveSetting('bankDetails', currentState.settings.bankDetails);
-    await saveSetting('useHandlingFee', currentState.settings.useHandlingFee);
-    await saveSetting('handlingFeeAmount', currentState.settings.handlingFeeAmount);
-    await saveSetting('paymentMethod', currentState.settings.paymentMethod);
-    await saveSetting('paymentDeadline', currentState.settings.paymentDeadline);
+    try {
+        const results = await Promise.all(Object.entries(nextSettings).map(
+            ([key, value]) => saveSetting(key, value)
+        ));
+        if (results.some(result => result === false)) {
+            alert('設定を保存できませんでした。通信状態を確認して、もう一度お試しください。');
+            return;
+        }
 
-    document.getElementById('settingsModal').classList.remove('active');
-    alert('設定を保存しました');
+        currentState.settings = nextSettings;
+        document.getElementById('settingsModal').classList.remove('active');
+        alert('設定を保存しました');
+    } catch (error) {
+        console.error('[App] Settings save error:', error);
+        alert('設定を保存できませんでした。通信状態を確認して、もう一度お試しください。');
+    } finally {
+        saveButton.disabled = false;
+    }
 }
 
 
@@ -1800,7 +1851,147 @@ function exportSnapshotExcel() {
     XLSX.writeFile(wb, `${snapshot.name}_${dateStr}.xlsx`);
 }
 
-async function exportSnapshotPdf(docType) {
+function formatYen(value) {
+    return `¥${QuoteUtils.normalizeYen(value).toLocaleString('ja-JP')}`;
+}
+
+function requestCurrentQuote() {
+    if (!currentState.currentStudentId || currentState.currentCart.length === 0) {
+        alert('生徒を選択し、カートに教材を追加してください');
+        return;
+    }
+
+    const student = currentState.students.find(item => item.id === currentState.currentStudentId);
+    if (!student) return;
+
+    openQuoteOptions({
+        targetLabel: `${student.name} 様`,
+        carts: [currentState.currentCart],
+        onConfirm: (includeShipping) => handleCreateQuote('quote', includeShipping)
+    });
+}
+
+function requestSnapshotQuote() {
+    const snapshot = document.getElementById('snapshotModal')._snapshotData;
+    const students = snapshot && Array.isArray(snapshot.students)
+        ? snapshot.students.filter(student => Array.isArray(student.items) && student.items.length > 0)
+        : [];
+
+    if (!snapshot || students.length === 0) {
+        alert('見積書を作成できるカート情報がありません');
+        return;
+    }
+
+    openQuoteOptions({
+        targetLabel: `${snapshot.name || 'スナップショット'}（${students.length}名分）`,
+        carts: students.map(student => student.items),
+        onConfirm: (includeShipping) => exportSnapshotPdf('quote', includeShipping)
+    });
+}
+
+function openQuoteOptions({ targetLabel, carts, onConfirm }) {
+    const modal = document.getElementById('quoteOptionsModal');
+    const shippingCheckbox = document.getElementById('quoteIncludeShipping');
+    const configuredFee = QuoteUtils.normalizeShippingFee(currentState.settings.shippingFee);
+
+    pendingQuoteAction = onConfirm;
+    pendingQuoteCarts = Array.isArray(carts) ? carts : [];
+    quoteOptionsTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    document.getElementById('quoteTargetLabel').textContent = targetLabel || '';
+    shippingCheckbox.disabled = configuredFee === 0;
+    shippingCheckbox.checked = configuredFee > 0;
+
+    const documentCount = Math.max(pendingQuoteCarts.length, 1);
+    const description = configuredFee > 0
+        ? `設定送料 ${formatYen(configuredFee)}（税込）${documentCount > 1 ? ` × ${documentCount}名` : ''}`
+        : '設定送料が0円のため加算されません';
+    document.getElementById('quoteShippingDescription').textContent = description;
+
+    updateQuoteOptionsSummary();
+    modal.hidden = false;
+    modal.classList.add('active');
+    requestAnimationFrame(() => {
+        (shippingCheckbox.disabled
+            ? document.getElementById('confirmCreateQuoteBtn')
+            : shippingCheckbox).focus();
+    });
+}
+
+function updateQuoteOptionsSummary() {
+    const shippingCheckbox = document.getElementById('quoteIncludeShipping');
+    const includeShipping = shippingCheckbox.checked && !shippingCheckbox.disabled;
+    const summary = pendingQuoteCarts.reduce((totals, cart) => {
+        const calculation = QuoteUtils.calculateQuote(cart, currentState.settings, includeShipping);
+        totals.items += calculation.itemsSubtotal;
+        totals.total += calculation.totalAmount;
+        return totals;
+    }, { items: 0, total: 0 });
+
+    document.getElementById('quoteItemsSubtotal').textContent = formatYen(summary.items);
+    document.getElementById('quoteGrandTotal').textContent = formatYen(summary.total);
+}
+
+function closeQuoteOptions() {
+    const modal = document.getElementById('quoteOptionsModal');
+    modal.classList.remove('active');
+    modal.hidden = true;
+    pendingQuoteAction = null;
+    pendingQuoteCarts = [];
+    if (quoteOptionsTrigger && document.contains(quoteOptionsTrigger)) quoteOptionsTrigger.focus();
+    quoteOptionsTrigger = null;
+}
+
+async function confirmQuoteOptions() {
+    if (typeof pendingQuoteAction !== 'function') return;
+    const action = pendingQuoteAction;
+    const shippingCheckbox = document.getElementById('quoteIncludeShipping');
+    const includeShipping = shippingCheckbox.checked && !shippingCheckbox.disabled;
+    closeQuoteOptions();
+    await action(includeShipping);
+}
+
+function handleQuoteOptionsKeydown(event) {
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        closeQuoteOptions();
+        return;
+    }
+    if (event.key !== 'Tab') return;
+
+    const focusable = [...event.currentTarget.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+    )].filter(element => !element.hidden && element.offsetParent !== null);
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+    }
+}
+
+function updateBatchShippingOption(resetDefault = false) {
+    const option = document.getElementById('batchShippingOption');
+    const checkbox = document.getElementById('batchIncludeShipping');
+    if (!option || !checkbox) return;
+
+    const selectedType = document.querySelector('input[name="batchDocType"]:checked')?.value || 'invoice';
+    const fee = QuoteUtils.normalizeShippingFee(currentState.settings.shippingFee);
+    option.hidden = selectedType !== 'quote';
+    checkbox.disabled = fee === 0;
+    if (resetDefault) checkbox.checked = selectedType === 'quote' && fee > 0;
+
+    document.getElementById('batchShippingDescription').textContent = fee > 0
+        ? `生徒1人につき設定送料 ${formatYen(fee)}（税込）を1回加算します`
+        : '設定送料が0円のため加算されません';
+}
+
+async function exportSnapshotPdf(docType, includeShipping = false) {
     const modal = document.getElementById('snapshotModal');
     const snapshot = modal._snapshotData;
     if (!snapshot) return;
@@ -1815,7 +2006,7 @@ async function exportSnapshotPdf(docType) {
         const template = document.getElementById('invoice-template');
 
         for (const st of snapshot.students) {
-            populateInvoiceTemplate(template, st.name, st.items, docType);
+            populateInvoiceTemplate(template, st.name, st.items, docType, includeShipping);
             const canvas = await renderInvoicePdfPage(template);
 
             pdf.addPage();
@@ -1838,7 +2029,7 @@ async function exportSnapshotPdf(docType) {
 
 // === INVOICE / QUOTE PDF GENERATION ===
 
-function populateInvoiceTemplate(template, studentName, cartItems, docType) {
+function populateInvoiceTemplate(template, studentName, cartItems, docType, includeShipping = false) {
     const q = (sel) => template.querySelector(sel);
     const settings = currentState.settings;
 
@@ -1889,7 +2080,7 @@ function populateInvoiceTemplate(template, studentName, cartItems, docType) {
     let subtotal = 0;
 
     cartItems.forEach(item => {
-        const price = parseInt(item.price_retail) || 0;
+        const price = QuoteUtils.normalizeYen(item.price_retail);
         subtotal += price;
         const tr = document.createElement('tr');
         tr.innerHTML = `
@@ -1900,6 +2091,25 @@ function populateInvoiceTemplate(template, studentName, cartItems, docType) {
         `;
         tbody.appendChild(tr);
     });
+
+    // Configured shipping is a per-quotation option and is never added to invoices.
+    const quoteCalculation = QuoteUtils.calculateQuote(
+        cartItems,
+        settings,
+        docType === 'quote' && includeShipping
+    );
+    if (quoteCalculation.shippingFee > 0) {
+        subtotal += quoteCalculation.shippingFee;
+        const tr = document.createElement('tr');
+        tr.className = 'shipping-row';
+        tr.innerHTML = `
+            <td>送料</td>
+            <td>${formatYen(quoteCalculation.shippingFee)}</td>
+            <td>1</td>
+            <td>${formatYen(quoteCalculation.shippingFee)}</td>
+        `;
+        tbody.appendChild(tr);
+    }
 
     // Handling fee (invoice only)
     if (docType === 'invoice' && settings.useHandlingFee && settings.handlingFeeAmount > 0) {
@@ -1976,7 +2186,7 @@ async function renderInvoicePdfPage(template) {
     return canvas;
 }
 
-async function handleCreateQuote(docType) {
+async function handleCreateQuote(docType, includeShipping = false) {
     if (!currentState.currentStudentId || currentState.currentCart.length === 0) {
         alert('生徒を選択し、カートに教材を追加してください');
         return;
@@ -1989,7 +2199,13 @@ async function handleCreateQuote(docType) {
 
     try {
         const template = document.getElementById('invoice-template');
-        const subtotal = populateInvoiceTemplate(template, student.name, currentState.currentCart, docType);
+        const subtotal = populateInvoiceTemplate(
+            template,
+            student.name,
+            currentState.currentCart,
+            docType,
+            docType === 'quote' && includeShipping
+        );
 
         const canvas = await renderInvoicePdfPage(template);
 
@@ -2005,8 +2221,12 @@ async function handleCreateQuote(docType) {
         const dateStr = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
         pdf.save(`${typeName}_${student.name}_${dateStr}.pdf`);
 
+        const shippingNote = docType === 'quote' && includeShipping
+            && QuoteUtils.normalizeShippingFee(currentState.settings.shippingFee) > 0
+            ? ' | 送料あり'
+            : '';
         await addHistoryRecord(`${typeName}作成`,
-            `${student.name}様 | ¥${subtotal.toLocaleString()} | ${currentState.currentCart.length}点`
+            `${student.name}様 | ¥${subtotal.toLocaleString()} | ${currentState.currentCart.length}点${shippingNote}`
         );
 
     } catch (err) {
@@ -2050,6 +2270,7 @@ async function handleBatchInvoice() {
     // Store the data for later use
     document.getElementById('batchInvoiceModal')._studentsData = studentsWithCarts;
     document.getElementById('batchInvoiceModal').classList.add('active');
+    updateBatchShippingOption(true);
 }
 
 async function executeBatchInvoice() {
@@ -2067,6 +2288,9 @@ async function executeBatchInvoice() {
     const docTypeRadio = document.querySelector('input[name="batchDocType"]:checked');
     const docType = docTypeRadio ? docTypeRadio.value : 'invoice';
     const typeName = docType === 'quote' ? '見積書' : '請求書';
+    const includeShipping = docType === 'quote'
+        && document.getElementById('batchIncludeShipping').checked
+        && !document.getElementById('batchIncludeShipping').disabled;
 
     modal.classList.remove('active');
 
@@ -2079,7 +2303,7 @@ async function executeBatchInvoice() {
 
         for (let i = 0; i < selectedStudents.length; i++) {
             const { student, cart } = selectedStudents[i];
-            populateInvoiceTemplate(template, student.name, cart, docType);
+            populateInvoiceTemplate(template, student.name, cart, docType, includeShipping);
 
             const canvas = await renderInvoicePdfPage(template);
 
@@ -2095,7 +2319,7 @@ async function executeBatchInvoice() {
         pdf.save(`${typeName}一括_${dateStr}.pdf`);
 
         await addHistoryRecord(`一括${typeName}作成`,
-            `${selectedStudents.length}名分の${typeName}を一括生成`
+            `${selectedStudents.length}名分の${typeName}を一括生成${includeShipping ? '（送料あり）' : ''}`
         );
 
         alert(`${selectedStudents.length}名分の${typeName}を1つのPDFにまとめました。`);
@@ -2121,4 +2345,3 @@ function handleClearAllCarts() {
         }
     );
 }
-
