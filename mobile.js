@@ -339,8 +339,8 @@ function createQuotationFromOptions() {
     modal.classList.remove('active');
     modal.hidden = true;
     pendingQuoteStudentId = null;
-    const printed = printQuotation(student, includeShipping);
-    if (!printed && restoreTarget && typeof restoreTarget.focus === 'function') {
+    printQuotation(student, includeShipping);
+    if (restoreTarget && typeof restoreTarget.focus === 'function') {
         restoreTarget.focus();
     }
     mobileQuoteTrigger = null;

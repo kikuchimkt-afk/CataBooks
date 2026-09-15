@@ -556,7 +556,8 @@ body {
     font-weight: 600;
 }
 
-.form-group input {
+.form-group input,
+.form-group textarea {
     width: 100%;
     padding: 12px;
     border: 1px solid var(--border);
@@ -584,6 +585,12 @@ body {
 .btn-save {
     background: var(--primary);
     color: white;
+}
+
+.form-group textarea {
+    min-height: 84px;
+    resize: vertical;
+    font-family: inherit;
 }
 
 .settings-box {
